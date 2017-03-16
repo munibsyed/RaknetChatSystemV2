@@ -83,6 +83,79 @@ std::vector<OpenGLInfo> ObjLoader::CreateOpenGLBuffers(tinyobj::attrib_t & attri
 	return m_glInfo;
 }
 
+
+std::vector<OpenGLInfo> ObjLoader::CreateOpenGLBuffers(tinyobj::attrib_t & attribs, tinyobj::shape_t shape)
+{
+	m_glInfo.resize(1); // grab each shape 
+	int shapeIndex = 0;
+
+	// setup OpenGL data 
+	glGenVertexArrays(1, &m_glInfo[shapeIndex].m_VAO);
+	glGenBuffers(1, &m_glInfo[shapeIndex].m_VBO);
+	glBindVertexArray(m_glInfo[shapeIndex].m_VAO);
+	m_glInfo[shapeIndex].m_faceCount = shape.mesh.num_face_vertices.size();
+	// collect triangle vertices 
+	std::vector<OBJVertex> vertices;
+	int index = 0;
+
+	/*if (shapeIndex == 0)
+	{
+	shapeIndex++;
+	continue;
+	}*/
+	for (auto face : shape.mesh.num_face_vertices)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			tinyobj::index_t idx = shape.mesh.indices[index + i];
+			OBJVertex v = { 0 }; // positions 
+			v.x = attribs.vertices[3 * idx.vertex_index + 0];
+			v.y = attribs.vertices[3 * idx.vertex_index + 1];
+			v.z = attribs.vertices[3 * idx.vertex_index + 2];
+			// normals 
+			if (attribs.normals.size() > 0)
+			{
+				v.nx = attribs.normals[3 * idx.normal_index + 0];
+				v.ny = attribs.normals[3 * idx.normal_index + 1];
+				v.nz = attribs.normals[3 * idx.normal_index + 2];
+			}
+
+			//tangents
+
+			// texture coordinates 
+
+			if (attribs.texcoords.size() > 0)
+			{
+				v.u = attribs.texcoords[2 * idx.texcoord_index + 0];
+				v.v = -attribs.texcoords[2 * idx.texcoord_index + 1];
+			}
+			vertices.push_back(v);
+		}
+		index += face;
+	}
+
+	// bind vertex data 
+	glBindBuffer(GL_ARRAY_BUFFER, m_glInfo[shapeIndex].m_VBO);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OBJVertex), vertices.data(), GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	//position 
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(OBJVertex), 0);
+	glEnableVertexAttribArray(1); //normal data 
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(OBJVertex), (void*)12);
+	glEnableVertexAttribArray(2); //texture data 
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(OBJVertex), (void*)24);
+	glEnableVertexAttribArray(3); //tangent data
+	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(OBJVertex), (void*)32);
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	shapeIndex++;
+
+
+	return m_glInfo;
+}
+
+
 void ObjLoader::CalculateTangents(std::vector<OBJVertex>& vertices)
 {
 	unsigned int vertexCount = (unsigned int)vertices.size();

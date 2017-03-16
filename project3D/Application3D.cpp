@@ -1,10 +1,10 @@
 #include "Application3D.h"
-#include "Gizmos.h"
 #include "Input.h"
 #include "MyTexture.h"
 #include "ParticleEmitter.h"
 
-#define PI 3.1415f
+
+#define PI 3.14159265359f
 
 using glm::vec3;
 using glm::vec4;
@@ -16,7 +16,6 @@ Application3D::Application3D() {
 
 	flyCamera = new FlyCamera(m_window, 10, 2.0f);
 	
-
 	//mesh = new Mesh("../Textures/Earth Textures/earth_cloud.jpg");
 	rows = 100;
 	columns = 100;
@@ -28,7 +27,7 @@ Application3D::~Application3D() {
 }
 
 bool Application3D::startup() {
-	
+
 	setBackgroundColour(0.25f, 0.25f, 0.25f);
 	// initialise gizmo primitive counts
 	Gizmos::create(10000,
@@ -43,16 +42,26 @@ bool Application3D::startup() {
 
 	flyCamera->SetLookAt(vec3(10), vec3(0), vec3(0, 1, 0));
 	flyCamera->SetPerspective(glm::pi<float>() * 0.25f, getWindowWidth() / (float)getWindowHeight(), 0.1f, 1000.f);
-	mesh = new Mesh(new ParticleEmitterCone());
-	mesh->LoadAndAttachShaders("vsSourceParticle.vs", "fsSourceParticle.frag");
-	mesh->GetEmitter()->InitializeCone(1000, 5000, 0.1f, 5.0f, 1, 5, 3, 0.1f, 0.0f, PI/4.0f, vec3(0,1,0), vec4(1, 0, 0, 1), vec4(1, 1, 0, 1));
+	
+	/*mesh = new Mesh();
+	mesh->GenerateFrameBufferObject();
+	mesh->CreatePlane();*/
 	
 
-	//emitter->Initialize();
-
-	//mesh = new Mesh("../Models/soulspear/soulspear/soulspear_diffuse.tga", "../Models/soulspear/soulspear/soulspear_normal.tga");
+	//mesh->GetEmitter()->InitializeCone(1000, 5000, 0.1f, 5.0f, 1, 5, 0.1, 0.01f, 0.0f, PI/8.0f, vec3(0,1,0), vec4(1, 0, 0, 1), vec4(1, 1, 0, 1));
 	
-	//mesh->LoadAndAttachShaders("vsSourceTexture.vs", "fsSourceTexture.frag");
+
+	//emitter->Initialize();	
+
+	mesh = new Mesh("../Models/soulspear/soulspear/soulspear_diffuse.tga", "../Models/soulspear/soulspear/soulspear_normal.tga");
+	mesh->GenerateFrameBufferObject();
+	mesh->CreatePlane();
+
+	mesh->LoadPostShaders("vsSourcePost.vs", "fsSourcePost.frag");
+	mesh->LoadMorphShaders("vsMorph.vs", "fsMorph.frag");
+
+	
+
 	//mesh->GenerateGrid(rows, columns);
 
 	return true;
@@ -73,7 +82,7 @@ void Application3D::update(float deltaTime) {
 	float time = getTime();
 
 	flyCamera->Update(m_window, deltaTime);
-	mesh->GetEmitter()->Update(deltaTime, flyCamera->GetWorldTransform());
+	//mesh->GetGPUEmitter()->Update(deltaTime, flyCamera->GetWorldTransform());
 	//emitter->Update(deltaTime, flyCamera->GetWorldTransform());
 	//emitter->Emit();
 	
@@ -94,7 +103,54 @@ void Application3D::update(float deltaTime) {
 
 	// add a transform so that we can see the axis
 	Gizmos::addTransform(mat4(1));
+	Gizmos::addSphere(vec3(0, 5, 0), 0.5f, 8, 8, vec4(1, 1, 0, 1));
+	Gizmos::addSphere(vec3(10, 0, 0), 1.0f, 16, 16, vec4(1, 1, 0, 1));
+	Gizmos::addCylinderFilled(vec3(-10, 0, 0), 1, 2, 8, vec4(0, 0, 1, 1));
+
 	
+	BoundingSphere sphere;
+	sphere.centre = vec3(-10, cosf((float)glfwGetTime()) + 1, -10);
+	sphere.radius = 0.5f;
+	vec4 planes[6];
+	flyCamera->GetFrustumPlanes(flyCamera->GetProjectionView(), planes);
+
+	bool renderIt = true;
+	for (int i = 0; i < 6; i++)
+	{
+		float d = glm::dot(glm::vec3(planes[i]), sphere.centre) + planes[i].w;
+
+		if (d < -sphere.radius)
+		{
+			renderIt = false;
+			//printf("Behind it, don't render it.\n");
+			break;
+		}
+
+		else if (d < sphere.radius)
+		{
+			//printf("Touching, we still need to render it.\n");
+		}
+
+		else
+		{
+			//printf("Front, fully visible so render it.\n");
+		}
+	}
+
+	if (renderIt == true)
+	{
+		std::cout << "Render it! " << std::endl;
+		Gizmos::addSphere(sphere.centre, sphere.radius, 8, 8, vec4(1, 0, 1, 1));
+	}
+
+	else
+	{
+		std::cout << "Don't render it!" << std::endl;
+	}
+
+
+
+
 	// quit if we press escape
 	aie::Input* input = aie::Input::getInstance();
 
@@ -108,8 +164,10 @@ void Application3D::draw() {
 	clearScreen();
 
 	float currentTime = getTime();
+	//mesh->Draw(flyCamera->GetProjectionView(), currentTime);
 	
-	mesh->Draw(flyCamera->GetProjectionView(), flyCamera->GetWorldTransform());
+	mesh->Draw((float)glfwGetTime(), flyCamera->GetProjectionView(), flyCamera->GetWorldTransform(), flyCamera);
 
 	Gizmos::draw(flyCamera->GetProjectionView());
+
 }
