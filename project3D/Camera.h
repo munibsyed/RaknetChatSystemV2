@@ -32,11 +32,14 @@ public:
 
 	mat4 GetProjectionView();
 
+	void GetFrustumPlanes(const mat4 & transform, glm::vec4 * planes);
+
 protected:
 
 	void UpdateProjectionViewTransform();
 
 	void UpdateWorldTransform();
+
 
 	mat4 worldTransform;
 	//inverse of world transform

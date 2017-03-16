@@ -8,7 +8,8 @@
 
 struct OpenGLInfo { 
 	unsigned int m_VAO; 
-	unsigned int m_VBO; 
+	unsigned int m_VBO;
+	unsigned int m_VBO2;
 	unsigned int m_faceCount; 
 };
 
@@ -27,6 +28,8 @@ public:
 	~ObjLoader();
 
 	std::vector<OpenGLInfo> CreateOpenGLBuffers(tinyobj::attrib_t &attribs, std::vector<tinyobj::shape_t>& shapes);
+
+	std::vector<OpenGLInfo> CreateOpenGLBuffers(tinyobj::attrib_t & attribs, tinyobj::shape_t shape);
 
 	void CalculateTangents(std::vector<OBJVertex>& vertices);
 

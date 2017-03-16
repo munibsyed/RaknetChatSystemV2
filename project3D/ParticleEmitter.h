@@ -66,13 +66,13 @@ protected:
 
 	float m_emitTimer;
 	float m_emitRate;
-
+	
 	float m_lifespanMin;
 	float m_lifespanMax;
-
+	
 	float m_velocityMin;
 	float m_velocityMax;
-
+	
 	float m_startSize;
 	float m_endSize;
 

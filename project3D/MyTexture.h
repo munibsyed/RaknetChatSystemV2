@@ -1,6 +1,5 @@
 #pragma once
 #include <gl_core_4_4.h>
-#include <stb_image.h>
 
 //class MyTexture
 //{
