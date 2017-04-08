@@ -6,7 +6,6 @@
 //   #define IMGUI_DEFINE_MATH_OPERATORS
 
 #pragma once
-
 #ifndef IMGUI_VERSION
 #error Must include imgui.h before imgui_internal.h
 #endif
@@ -25,6 +24,8 @@
 #pragma clang diagnostic ignored "-Wmissing-prototypes"     // for stb_textedit.h
 #pragma clang diagnostic ignored "-Wold-style-cast"
 #endif
+
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 //-----------------------------------------------------------------------------
 // Forward Declarations
