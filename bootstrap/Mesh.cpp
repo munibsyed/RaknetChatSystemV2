@@ -5,7 +5,7 @@ Mesh::Mesh()
 	m_tex = nullptr;
 	m_gpuEmitter = nullptr;
 	m_emitter = nullptr;
-	LoadAndAttachShaders("vsSourcePost.vs", "fsSourcePost.frag");
+	m_soulSpearAABB = nullptr;
 
 }
 
@@ -48,14 +48,13 @@ Mesh::Mesh(const char* filename, const char* normalMapFilename)
 	m_tex = new aie::Texture(filename, normalMapFilename);
 	m_soulSpearAABB = new AABB();
 	
-	//m_texture = new MyTexture(filename);
-
 	//soulspear
 	tinyobj::attrib_t attribs;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
 	std::string err;
-	LoadAndAttachShaders("vsSourceTexture.vs", "fsSourceTexture.frag");
+	LoadAndAttachShaders("vsSourceTexture.vs", "fsSourceTexture.frag", "forwardShader");
+
 	bool success = tinyobj::LoadObj(&attribs, &shapes, &materials, &err, "../Models/soulspear/soulspear/soulspear.obj");
 	ObjLoader *objLoader = new ObjLoader();
 	m_glInfo = objLoader->CreateOpenGLBuffers(attribs, shapes);
@@ -128,6 +127,34 @@ Mesh::~Mesh()
 		delete m_soulSpearAABB;
 }
 
+void Mesh::GeneratePerlinValues()
+{
+	int dims = m_rows * m_columns;
+	float* perlinData = new float[dims*dims];
+
+	std::cout << dims * dims << std::endl;
+	std::cout << m_rows * dims + m_columns << std::endl;
+
+	float scale = (1.0f / dims) * 3;
+	for (int x = 0; x < m_columns; x++)
+	{
+		for (int y = 0; y < m_rows; y++)
+		{
+			perlinData[y * m_rows + x] = glm::perlin(vec2(x, y) *scale) * 0.5f + 0.5f;
+		}
+	}
+
+	glGenTextures(1, &m_perlinTexture);
+	glBindTexture(GL_TEXTURE_2D, m_perlinTexture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_rows, m_columns, 0, GL_RED, GL_FLOAT, perlinData);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); 
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	delete[] perlinData;
+}
+
 void Mesh::GenerateFrameBufferObject()
 {
 	//Post Processing Exercises
@@ -197,6 +224,44 @@ void Mesh::GenerateFrameBufferObject()
 
 }
 
+void Mesh::GenerateShadowFrameBufferObject()
+{
+	//setup shadow map buffer
+	glGenFramebuffers(1, &m_FBOShadow);
+	glBindFramebuffer(GL_FRAMEBUFFER, m_FBOShadow);
+
+	glGenTextures(1, &m_FBODepthShadow);
+	glBindTexture(GL_TEXTURE_2D, m_FBODepthShadow);
+
+	//texture uses a 16-bit depth component format
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, 1024, 1024, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	//attached as a depth attachment to capture depth not colour
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_FBODepthShadow, 0);
+
+	//no colour targets are used
+	glDrawBuffer(GL_NONE);
+
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (status != GL_FRAMEBUFFER_COMPLETE)
+		printf("Framebuffer Error!\n");
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	m_lightDirection = glm::normalize(glm::vec3(1, 2.5f, 1));
+	mat4 lightProjection = glm::ortho<float>(-10, 10, -10, 10, -10, 10);
+
+	mat4 lightView = glm::lookAt(m_lightDirection, glm::vec3(0), glm::vec3(0, 1, 0));
+	
+	m_lightMatrix = lightProjection * lightView;
+
+
+}
+
 void Mesh::CreatePlane()
 {
 	//fullscreen quad
@@ -251,11 +316,10 @@ void Mesh::GenerateGrid(int rows, int columns)
 		for (int ii = 0; ii < columns; ii++)
 		{
 			vertexArray[i * columns + ii].position = vec4((float)ii, 0, (float)i, 1);
-
-			vec3 colour = vec3(glm::sin((ii / (float)(columns - 1)) * (i / (float)(rows - 1))));
-			//vertexArray[i * columns + ii].colour = vec4(colour, 1);
+			vertexArray[i * columns + ii].texCoord = vec2((float)ii, (float)i);
 		}
 	}
+
 
 	unsigned int index = 0;
 	for (int i = 0; i < rows - 1; i++)
@@ -270,7 +334,7 @@ void Mesh::GenerateGrid(int rows, int columns)
 			indices[index++] = i * columns + ii;
 			indices[index++] = (i + 1) * columns + (ii + 1);
 			indices[index++] = i * columns + (ii + 1);
-		}
+		}	
 	}
 
 	//generate vertex buffer object
@@ -332,68 +396,10 @@ void ShaderSyntaxCheck(std::string source, std::vector<std::string> &warningMess
 	}
 }
 
-void Mesh::LoadPostShaders(const char * postShaderVs, const char * postShaderFs)
+void Mesh::LoadShadowShaders(const char * shadowShaderVs, const char * shadowShaderFs, const char * shadowMapShaderVs, const char * shadowMapShaderFs)
 {
-	std::string vsSourceStr = LoadShader(postShaderVs);
-	std::string fsSourceStr = LoadShader(postShaderFs);
-
-	const char* vsSource = vsSourceStr.c_str();
-	const char* fsSource = fsSourceStr.c_str();
-
-	int success = GL_FALSE;
-	int compileSucess = GL_FALSE;
-
-	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	
-	glShaderSource(vertexShader, 1, (const char**)&vsSource, 0);
-	glShaderSource(fragmentShader, 1, (const char**)&fsSource, 0);
-	glCompileShader(vertexShader);
-	glCompileShader(fragmentShader);
-
-	m_postProgramID = glCreateProgram();
-	glAttachShader(m_postProgramID, vertexShader);
-	glAttachShader(m_postProgramID, fragmentShader);
-	glLinkProgram(m_postProgramID);
-
-	glGetProgramiv(m_postProgramID, GL_LINK_STATUS, &success);
-	glGetProgramiv(m_postProgramID, GL_VALIDATE_STATUS, &compileSucess);
-
-	if (compileSucess == GL_FALSE)
-	{
-		std::stringstream ss;
-		std::cout << "Compile fail!" << std::endl;
-
-		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader compile fail." << '\n';
-
-		m_errorMessages.push_back(ss.str());
-	}
-
-	if (success == GL_FALSE)
-	{
-		std::stringstream ss;
-		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader link fail." << '\n';
-		m_errorMessages.push_back(ss.str());
-		int infoLogLength = 0;
-		glGetProgramiv(m_postProgramID, GL_INFO_LOG_LENGTH, &infoLogLength);
-		char* infoLog = new char[infoLogLength];
-
-		glGetProgramInfoLog(m_postProgramID, infoLogLength, 0, infoLog);
-		std::cout << "Error: Failed to link shader program." << std::endl;
-		std::cout << infoLog << std::endl;
-
-		delete[] infoLog;
-	}
-
-	glDeleteShader(vertexShader);
-	glDeleteShader(fragmentShader);
-
-}
-
-void Mesh::LoadMorphShaders(const char * morphShaderVs, const char * morphShaderFs)
-{
-	std::string vsSourceStr = LoadShader(morphShaderVs);
-	std::string fsSourceStr = LoadShader(morphShaderFs);
+	std::string vsSourceStr = LoadShader(shadowShaderVs);
+	std::string fsSourceStr = LoadShader(shadowShaderFs);
 
 	const char* vsSource = vsSourceStr.c_str();
 	const char* fsSource = fsSourceStr.c_str();
@@ -409,23 +415,13 @@ void Mesh::LoadMorphShaders(const char * morphShaderVs, const char * morphShader
 	glCompileShader(vertexShader);
 	glCompileShader(fragmentShader);
 
-	m_morphShader = glCreateProgram();
-	glAttachShader(m_morphShader, vertexShader);
-	glAttachShader(m_morphShader, fragmentShader);
-	glLinkProgram(m_morphShader);
+	m_useShadowProgram = glCreateProgram();
+	glAttachShader(m_useShadowProgram, vertexShader);
+	glAttachShader(m_useShadowProgram, fragmentShader);
+	glLinkProgram(m_useShadowProgram);
 
-	glGetProgramiv(m_morphShader, GL_LINK_STATUS, &success);
-	glGetProgramiv(m_morphShader, GL_VALIDATE_STATUS, &compileSucess);
-
-	if (compileSucess == GL_FALSE)
-	{
-		std::stringstream ss;
-		std::cout << "Compile fail!" << std::endl;
-
-		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader compile fail." << '\n';
-
-		m_errorMessages.push_back(ss.str());
-	}
+	glGetProgramiv(m_useShadowProgram, GL_LINK_STATUS, &success);
+	glGetProgramiv(m_useShadowProgram, GL_VALIDATE_STATUS, &compileSucess);
 
 	if (success == GL_FALSE)
 	{
@@ -433,10 +429,10 @@ void Mesh::LoadMorphShaders(const char * morphShaderVs, const char * morphShader
 		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader link fail." << '\n';
 		m_errorMessages.push_back(ss.str());
 		int infoLogLength = 0;
-		glGetProgramiv(m_morphShader, GL_INFO_LOG_LENGTH, &infoLogLength);
+		glGetProgramiv(m_useShadowProgram, GL_INFO_LOG_LENGTH, &infoLogLength);
 		char* infoLog = new char[infoLogLength];
 
-		glGetProgramInfoLog(m_morphShader, infoLogLength, 0, infoLog);
+		glGetProgramInfoLog(m_useShadowProgram, infoLogLength, 0, infoLog);
 		std::cout << "Error: Failed to link shader program." << std::endl;
 		std::cout << infoLog << std::endl;
 
@@ -446,9 +442,53 @@ void Mesh::LoadMorphShaders(const char * morphShaderVs, const char * morphShader
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
 
+
+	//SHADOW MAP SHADERS
+	vsSourceStr = LoadShader(shadowMapShaderVs);
+	fsSourceStr = LoadShader(shadowMapShaderFs);
+
+	const char* vs = vsSourceStr.c_str();
+	const char* fs = fsSourceStr.c_str();
+
+	success = GL_FALSE;
+	compileSucess = GL_FALSE;
+
+	vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+
+	glShaderSource(vertexShader, 1, (const char**)&vs, 0);
+	glShaderSource(fragmentShader, 1, (const char**)&fs, 0);
+	glCompileShader(vertexShader);
+	glCompileShader(fragmentShader);
+	m_shadowGenProgram = glCreateProgram();
+	glAttachShader(m_shadowGenProgram, vertexShader);
+	glAttachShader(m_shadowGenProgram, fragmentShader);
+	glLinkProgram(m_shadowGenProgram);
+
+	glGetProgramiv(m_shadowGenProgram, GL_LINK_STATUS, &success);
+	glGetProgramiv(m_shadowGenProgram, GL_VALIDATE_STATUS, &compileSucess);
+
+	if (success == GL_FALSE)
+	{
+		std::stringstream ss;
+		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader link fail." << '\n';
+		m_errorMessages.push_back(ss.str());
+		int infoLogLength = 0;
+		glGetProgramiv(m_shadowGenProgram, GL_INFO_LOG_LENGTH, &infoLogLength);
+		char* infoLog = new char[infoLogLength];
+
+		glGetProgramInfoLog(m_shadowGenProgram, infoLogLength, 0, infoLog);
+		std::cout << "Error: Failed to link shader program." << std::endl;
+		std::cout << infoLog << std::endl;
+
+		delete[] infoLog;	
+	}
+
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
 }
 
-void Mesh::LoadAndAttachShaders(const char * vsFilename, const char * fsFilename)
+void Mesh::LoadAndAttachShaders(const char * vsFilename, const char * fsFilename, const char * shaderKey)
 {
 	std::string vsSourceStr = LoadShader(vsFilename);
 	std::string fsSourceStr = LoadShader(fsFilename);
@@ -469,13 +509,13 @@ void Mesh::LoadAndAttachShaders(const char * vsFilename, const char * fsFilename
 	glShaderSource(fragmentShader, 1, (const char**)&fsSource, 0);
 	glCompileShader(fragmentShader);
 
-	m_programID = glCreateProgram();
-	glAttachShader(m_programID, vertexShader);
-	glAttachShader(m_programID, fragmentShader);
-	glLinkProgram(m_programID);
+	m_shaderMap[shaderKey] = glCreateProgram();
+	glAttachShader(m_shaderMap[shaderKey], vertexShader);
+	glAttachShader(m_shaderMap[shaderKey], fragmentShader);
+	glLinkProgram(m_shaderMap[shaderKey]);
 
-	glGetProgramiv(m_programID, GL_LINK_STATUS, &success);
-	glGetProgramiv(m_programID, GL_VALIDATE_STATUS, &compileSucess);
+	glGetProgramiv(m_shaderMap[shaderKey], GL_LINK_STATUS, &success);
+	glGetProgramiv(m_shaderMap[shaderKey], GL_VALIDATE_STATUS, &compileSucess);
 
 	if (compileSucess == GL_FALSE)
 	{
@@ -492,10 +532,10 @@ void Mesh::LoadAndAttachShaders(const char * vsFilename, const char * fsFilename
 		ss << "ERROR [" << m_errorMessages.size() << "]" << " Shader link fail." << '\n';
 		m_errorMessages.push_back(ss.str());
 		int infoLogLength = 0;
-		glGetProgramiv(m_programID, GL_INFO_LOG_LENGTH, &infoLogLength);
+		glGetProgramiv(m_shaderMap[shaderKey], GL_INFO_LOG_LENGTH, &infoLogLength);
 		char* infoLog = new char[infoLogLength];
 
-		glGetProgramInfoLog(m_programID, infoLogLength, 0, infoLog);
+		glGetProgramInfoLog(m_shaderMap[shaderKey], infoLogLength, 0, infoLog);
 		std::cout << "Error: Failed to link shader program." << std::endl;
 		std::cout << infoLog << std::endl;
 			
@@ -513,13 +553,13 @@ void Mesh::Draw(mat4 projectionView, float time)
 	glViewport(0, 0, 1280, 720);
 
 	vec4 clearColour(0.75f, 0.75f, 0.75f, 1);
-		//ImGui::TextColored(ImVec4(1,0,0,1), "Some text");
+	//ImGui::TextColored(ImVec4(1,0,0,1), "Some text");
 
-	//glClearColor(clearColour.x, clearColour.y, clearColour.z, 1);
+//glClearColor(clearColour.x, clearColour.y, clearColour.z, 1);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	Gizmos::draw(projectionView);
-	
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, 1280, 720);
 	ImGui::Begin("Error Console: ");
@@ -539,7 +579,7 @@ void Mesh::Draw(mat4 projectionView, float time)
 	glClear(GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(m_programID);
-	
+
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_FBOTexture);
 	int location = glGetUniformLocation(m_programID, "target");
@@ -552,7 +592,7 @@ void Mesh::Draw(mat4 projectionView, float time)
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWorld)
+void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWorld, const char* shaderKey, const char* morphShader)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
 	glViewport(0, 0, 1280, 720);
@@ -561,18 +601,17 @@ void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWo
 
 	Gizmos::draw(projectionView);
 
+	glUseProgram(m_shaderMap[shaderKey]);
 
-	glUseProgram(m_programID);
-
-	int location = glGetUniformLocation(m_programID, "keyTime");
+	int location = glGetUniformLocation(m_shaderMap[shaderKey], "keyTime");
 	glUniform1f(location, cosf(time) * 0.5f + 0.5f);
 
-	unsigned int projectionViewTransform = glGetUniformLocation(m_programID, "projectionViewWorldMatrix");
+	unsigned int projectionViewTransform = glGetUniformLocation(m_shaderMap[shaderKey], "projectionViewWorldMatrix");
 	glUniformMatrix4fv(projectionViewTransform, 1, GL_FALSE, glm::value_ptr(projectionView));
 
 	//give worrd (view) matrix to vertex shader so normals can be calculated correctly (they can be moved according to the model's position, orientation etc.)
 
-	unsigned int cameraWorldTransform = glGetUniformLocation(m_programID, "cameraWorld");
+	unsigned int cameraWorldTransform = glGetUniformLocation(m_shaderMap[shaderKey], "cameraWorld");
 	glUniformMatrix4fv(cameraWorldTransform, 1, GL_FALSE, glm::value_ptr(cameraWorld));
 
 	if (m_tex != nullptr)
@@ -586,15 +625,15 @@ void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWo
 	}
 
 	//tell the shader where it is
-	unsigned int diffuse = glGetUniformLocation(m_programID, "diffuse");
+	unsigned int diffuse = glGetUniformLocation(m_shaderMap[shaderKey], "diffuse");
 	glUniform1i(diffuse, 0);
 
 	//set normal sampler
-	unsigned int normal = glGetUniformLocation(m_programID, "normal");
+	unsigned int normal = glGetUniformLocation(m_shaderMap[shaderKey], "normal");
 	glUniform1i(normal, 1);
 
 	//set light direction uniform
-	unsigned int lightDir = glGetUniformLocation(m_programID, "lightDirection");
+	unsigned int lightDir = glGetUniformLocation(m_shaderMap[shaderKey], "lightDirection");
 	vec3 lightDirection(1, 0, 0);
 	glUniform3fv(lightDir, 1, glm::value_ptr(lightDirection));
 	aie::Input *input = aie::Input::getInstance();
@@ -610,70 +649,78 @@ void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWo
 
 	angleRotate = 0.01f;
 	//set y rotation matrix
-	unsigned int yRot = glGetUniformLocation(m_programID, "rotateOnY");
+	unsigned int yRot = glGetUniformLocation(m_shaderMap[shaderKey], "rotateOnY");
 	yRotate = glm::rotate(yRotate, angleRotate, glm::vec3(0, 1, 0));
 	glUniformMatrix4fv(yRot, 1, GL_FALSE, glm::value_ptr(yRotate));
 
 	//set light pos
-	unsigned int lightPos = glGetUniformLocation(m_programID, "lightPos");
+	unsigned int lightPos = glGetUniformLocation(m_shaderMap[shaderKey], "lightPos");
 	//vec3 lightPosition(0, 2, 0);
 	glUniform3fv(lightPos, 1, glm::value_ptr(lightPosition));
 
 	//set light colour
-	unsigned int lightColour = glGetUniformLocation(m_programID, "lightColour");
+	unsigned int lightColour = glGetUniformLocation(m_shaderMap[shaderKey], "lightColour");
 	vec3 lightColourVec(0, 1, 1);
 	glUniform3fv(lightColour, 1, glm::value_ptr(lightColourVec));
 
 	//set ambient light colour
-	unsigned int ambientLight = glGetUniformLocation(m_programID, "ambientColour");
+	unsigned int ambientLight = glGetUniformLocation(m_shaderMap[shaderKey], "ambientColour");
 	vec3 ambientLightColour(1, 1, 1);
 	glUniform3fv(ambientLight, 1, glm::value_ptr(ambientLightColour));
 
 	//set ambient light scale
-	unsigned int ambientLightScale = glGetUniformLocation(m_programID, "ambientColourScale");
+	unsigned int ambientLightScale = glGetUniformLocation(m_shaderMap[shaderKey], "ambientColourScale");
 	vec3 ambientScale(0.05f, 0.05f, 0.05f);
 	glUniform3fv(ambientLightScale, 1, glm::value_ptr(ambientScale));
 
 	//set cone angle
-	unsigned int coneAngle = glGetUniformLocation(m_programID, "coneAngle");
+	unsigned int coneAngle = glGetUniformLocation(m_shaderMap[shaderKey], "coneAngle");
 	glUniform1f(coneAngle, 90.0f);
 
 	//set attenuation
-	unsigned int attenuation = glGetUniformLocation(m_programID, "attenuation");
+	unsigned int attenuation = glGetUniformLocation(m_shaderMap[shaderKey], "attenuation");
 	glUniform1f(attenuation, 3.0f);
 
 	//set camera pos
-	unsigned int cameraPos = glGetUniformLocation(m_programID, "cameraPos");
+	unsigned int cameraPos = glGetUniformLocation(m_shaderMap[shaderKey], "cameraPos");
 	glUniform3fv(cameraPos, 1, glm::value_ptr(vec3(cameraWorld[3][0], cameraWorld[3][1], cameraWorld[3][2])));
 
 	//set specular power
 	float specPower = 32.0f;
-	unsigned int specularPower = glGetUniformLocation(m_programID, "specPower");
+	unsigned int specularPower = glGetUniformLocation(m_shaderMap[shaderKey], "specPower");
 	glUniform1f(specularPower, specPower);
 
-	unsigned int light = glGetUniformLocation(m_programID, "spotLightOn");
+	unsigned int light = glGetUniformLocation(m_shaderMap[shaderKey], "spotLightOn");
 	glUniform1i(light, spotLightOn);
-	light = glGetUniformLocation(m_programID, "specOn");
+	light = glGetUniformLocation(m_shaderMap[shaderKey], "specOn");
 	glUniform1i(light, specLightOn);
-	light = glGetUniformLocation(m_programID, "ambientOn");
+	light = glGetUniformLocation(m_shaderMap[shaderKey], "ambientOn");
 	glUniform1i(light, ambientLightOn);
 
-	unsigned int normalOn = glGetUniformLocation(m_programID, "normalsOn");
+	unsigned int normalOn = glGetUniformLocation(m_shaderMap[shaderKey], "normalsOn");
 	glUniform1i(normalOn, normalsOn);
 
 	
-
 	//draw soulspear
 	glBindVertexArray(m_glInfo[0].m_VAO);
 	glDrawArrays(GL_TRIANGLES, 0, m_glInfo[0].m_faceCount * 3);
 
+	glUseProgram(m_shaderMap[morphShader]);
 
-	glUseProgram(m_morphShader);
+	ambientLightColour = vec3(0, 0, 1);
+	ambientLight = glGetUniformLocation(m_shaderMap[morphShader], "ambientColour");
+	glUniform3fv(ambientLight, 1, glm::value_ptr(ambientLightColour));
 
-	location = glGetUniformLocation(m_morphShader, "keyTime");
+	//set ambient light scale
+	ambientLightScale = glGetUniformLocation(m_shaderMap[morphShader], "ambientColourScale");
+	ambientScale = vec3(0.5f, 0.5f, 0.5f);
+	glUniform3fv(ambientLightScale, 1, glm::value_ptr(ambientScale));
+
+
+	location = glGetUniformLocation(m_shaderMap[morphShader], "keyTime");
 	glUniform1f(location, cosf(time) * 0.5f + 0.5f);
 
-	projectionViewTransform = glGetUniformLocation(m_morphShader, "projectionViewWorldMatrix");
+	projectionViewTransform = glGetUniformLocation(m_shaderMap[morphShader], "projectionViewWorldMatrix");
 	glUniformMatrix4fv(projectionViewTransform, 1, GL_FALSE, glm::value_ptr(projectionView));
 
 	for (unsigned int i = 1; i < m_glInfo.size(); i++)
@@ -682,20 +729,13 @@ void Mesh::DrawForwardRendering(float time, mat4 &projectionView, mat4 &cameraWo
 		glDrawArrays(GL_TRIANGLES, 0, m_glInfo[i].m_faceCount * 3);
 	}
 
-	//for (auto& gl : m_glInfo)
-	//{
-	//	glBindVertexArray(gl.m_VAO);
-	//	glDrawArrays(GL_TRIANGLES, 0, gl.m_faceCount * 3);
-	//	
-	//}
-
 }
 
-void Mesh::DrawPost(float time, mat4 &projectionView)
+void Mesh::DrawPost(float time, mat4 &projectionView, const char* postShaderKey)
 {	
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, 1280, 720);
-	ImGui::Begin("Error Console: ");
+	ImGui::Begin("Munib's application: ");
 	for (unsigned int i = 0; i < m_errorMessages.size(); i++)
 	{
 		ImGui::TextColored(ImVec4(1, 0, 0, 1), m_errorMessages[i].c_str());
@@ -749,44 +789,37 @@ void Mesh::DrawPost(float time, mat4 &projectionView)
 
 	glClear(GL_DEPTH_BUFFER_BIT);
 
-	glUseProgram(m_postProgramID);
+	glUseProgram(m_shaderMap[postShaderKey]);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_FBOTexture);
-	int location = glGetUniformLocation(m_postProgramID, "target");
+	int location = glGetUniformLocation(m_shaderMap[postShaderKey], "target");
 	glUniform1i(location, 0);
-	location = glGetUniformLocation(m_postProgramID, "time");
+	location = glGetUniformLocation(m_shaderMap[postShaderKey], "time");
 	glUniform1f(location, time);
 
-	unsigned int postLoc = glGetUniformLocation(m_postProgramID, "noPostProcess");
+	unsigned int postLoc = glGetUniformLocation(m_shaderMap[postShaderKey], "noPostProcess");
 	glUniform1i(postLoc, noPostProcess);
 
-	postLoc = glGetUniformLocation(m_postProgramID, "scanLines");
+	postLoc = glGetUniformLocation(m_shaderMap[postShaderKey], "scanLines");
 	glUniform1i(postLoc, scanLines);
 
-	postLoc = glGetUniformLocation(m_postProgramID, "grayScale");
+	postLoc = glGetUniformLocation(m_shaderMap[postShaderKey], "grayScale");
 	glUniform1i(postLoc, grayScale);
 
-	postLoc = glGetUniformLocation(m_postProgramID, "distort");
+	postLoc = glGetUniformLocation(m_shaderMap[postShaderKey], "distort");
 	glUniform1i(postLoc, distort);
 
 	glBindVertexArray(m_VAO);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void Mesh::Draw(float time, mat4 &projectionView, mat4 &cameraWorld, FlyCamera *cam)
+
+void Mesh::Draw(float time, mat4 &projectionView, mat4 &cameraWorld, const char* forwardShaderKey, const char* postShaderKey, const char *morphShaderKey)
 {
+	DrawForwardRendering(time, projectionView, cameraWorld, forwardShaderKey, morphShaderKey);
+	DrawPost(time, projectionView, postShaderKey);
 
-	DrawForwardRendering(time, projectionView, cameraWorld);
-	DrawPost(time, projectionView);
-
-	//m_emitter->Draw();
-	//m_gpuEmitter->Draw(time, cameraWorld, projectionView);
-
-	//glBindVertexArray(m_VAO);
-	//unsigned int indexCount = (m_rows - 1) * (m_columns - 1) * 6;
-
-	//glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
 }
 
 void Mesh::Draw(mat4 projectionView, float t, float height)
@@ -805,6 +838,24 @@ void Mesh::Draw(mat4 projectionView, float t, float height)
 
 	//what shape to draw, number of triangles, datatype in index buffer, offset (where to start))
 	glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+}
+
+void Mesh::DrawPlane(mat4 projectionView, const char* shaderKey)
+{
+	glUseProgram(m_shaderMap[shaderKey]);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_perlinTexture);
+	
+	unsigned int loc = glGetUniformLocation(m_shaderMap[shaderKey], "projectionViewWorldMatrix");
+	glUniformMatrix4fv(loc, 1, false, glm::value_ptr(projectionView));
+
+	loc = glGetUniformLocation(m_shaderMap[shaderKey], "perlinTexture");
+	glUniform1i(loc, 0);
+
+	glBindVertexArray(m_VAO);
+	unsigned int indexCount = (m_rows - 1) * (m_columns - 1) * 6;
+	glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+
 }
 
 ParticleEmitter* Mesh::GetEmitter()
