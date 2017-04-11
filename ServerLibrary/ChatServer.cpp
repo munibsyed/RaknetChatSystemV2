@@ -22,6 +22,8 @@ ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : POR
 	m_nextClientID = 0;
 	m_nextChatID = 0;
 
+	m_fileListTransfer->StartIncrementalReadThreads(1);
+
 }
 
 
@@ -77,7 +79,14 @@ void ChatServer::Update()
 			case ID_CHAT_MESSAGE:
 			{
 				std::cout << "Received chat message." << std::endl;
-				ReceiveAndSendBackChatMessage(packet);
+				ReceiveAndSendChatMessage(packet);
+				break;
+			}
+
+			case ID_CHAT_MESSAGE_WITH_ADDRESS:
+			{
+				std::cout << "Received chat message." << std::endl;
+				ReceiveAndSendChatMessageToAddress(packet);
 				break;
 			}
 
@@ -141,7 +150,16 @@ void ChatServer::Update()
 					//send address of invited client back to original sender
 					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
 
-					//ALSO PERFORM THE VICE-VERSA
+					//send sender address to invited client
+					std::stringstream ss2;
+					ss2 << packet->systemAddress.ToString() << "[" << chatID;
+					RakNet::BitStream bsOut2;
+					bsOut2.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS);
+					bsOut2.Write(ss2.str().c_str());
+
+					m_peerInterface->Send(&bsOut2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, address, false);
+
+
 				}
 
 				else
@@ -209,7 +227,7 @@ void ChatServer::SendDisconectionNotification(RakNet::Packet * packet)
 	m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
 
-void ChatServer::ReceiveAndSendBackChatMessage(RakNet::Packet * packet)
+void ChatServer::ReceiveAndSendChatMessage(RakNet::Packet * packet)
 {
 	RakNet::BitStream bsIn(packet->data, packet->length, false);
 	RakNet::RakString str;
@@ -256,4 +274,75 @@ void ChatServer::ReceiveAndSendBackChatMessage(RakNet::Packet * packet)
 	{
 		m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, true); //send to everyone except packet->systemAddress, i.e. original sender
 	}
+}
+
+void ChatServer::ReceiveAndSendChatMessageToAddress(RakNet::Packet * packet)
+{
+	RakNet::BitStream bsIn(packet->data, packet->length, false);
+	RakNet::RakString str;
+
+	bsIn.IgnoreBytes(sizeof(unsigned char));
+	bsIn.Read(str);
+	std::cout << "Chat message: " << str << std::endl;
+
+	//parse address
+	std::string toParse = str.C_String();
+	std::string addressAsStr = "";
+	int index = 0;
+	for (int i = toParse.length() - 1; i >= 0; i--)
+	{
+		if (toParse[i] == ']')
+		{
+			index = i;
+			break;
+		}
+
+		else
+		{
+			addressAsStr += toParse[i];
+		}
+		
+	}
+
+	std::reverse(addressAsStr.begin(), addressAsStr.end());
+	RakNet::SystemAddress recipientAddress;
+	recipientAddress.FromString(addressAsStr.c_str());
+
+	toParse = toParse.substr(0, index);
+
+	//parse chat ID number
+	std::string idNumAsStr = "";
+	for (int i = toParse.length() - 1; i >= 0; i--)
+	{
+		if (toParse[i] == '[')
+		{
+			//toParse = toParse.substr(0, i);
+			break;
+		}
+
+		else
+		{
+			idNumAsStr += toParse[i];
+		}
+	}
+
+	//we have the chat ID, we aren't doing anything with it yet
+	std::reverse(idNumAsStr.begin(), idNumAsStr.end());
+	int idNum = std::stoi(idNumAsStr);
+	if (m_chatIDToClientAddresses.count(idNum) == 0)
+		m_chatIDToClientAddresses[idNum].push_back(packet->systemAddress);
+
+	//str = toParse.c_str();
+
+	std::string temp = str.C_String();
+	temp = temp.substr(0, index);
+	str = temp.c_str();
+
+	//send message back to all clients
+	RakNet::BitStream bsOut;
+	bsOut.Write((unsigned char)Messages::ID_CHAT_MESSAGE);
+	bsOut.Write(str);
+
+	m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, recipientAddress, false);
+	
 }

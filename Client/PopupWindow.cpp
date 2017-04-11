@@ -21,7 +21,7 @@ PopupWindow::~PopupWindow()
 
 void PopupWindow::Draw()
 {
-	ImGuiWindowFlags flags = 0;
+	ImGuiWindowFlags flags = 0;	
 
 	ImGui::Begin(ss.str().c_str(), m_open, flags);
 	ImGui::TextColored(ImVec4(1,0,0,1), m_message.c_str());

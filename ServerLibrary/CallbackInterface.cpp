@@ -2,9 +2,11 @@
 
 bool CallbackInterface::OnFile(OnFileStruct * onFileStruct)
 {
-	return false;
+	std::cout << onFileStruct->fileData << std::endl;
+	return true;
 }
 
 void CallbackInterface::OnFileProgress(FileProgressStruct * fps)
 {
+	
 }

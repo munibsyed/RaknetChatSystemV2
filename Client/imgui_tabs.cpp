@@ -36,6 +36,7 @@
 #include "imgui_tabs.h"
 
 ImGui::ImGuiUserStyle::ImGuiUserStyle(){
+	//set tab colours here
     Colors[ImGuiUserCol_TabNormal] = ImVec4(0.65f, 0.65f, 0.68f, 1.00f);
     Colors[ImGuiUserCol_TabTitleTextNormal] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
     Colors[ImGuiUserCol_TabTitleTextSelected] = ImVec4(1.0f, 1.0f, 1.0f, 1.00f);
@@ -49,6 +50,11 @@ const ImU32 ImGui::GetColorU32(ImGuiUserCol_ idx, float alpha_mul) {
     if (alpha_mul > 0.0f)
         c.w *= GImGui->Style.Alpha * alpha_mul;
     return ColorConvertFloat4ToU32(c);
+}
+
+void ImGui::SetColor(ImGuiUserCol_ idx, ImVec4 colour)
+{
+	UserStyle.Colors[idx] = colour;
 }
 
 void ImGui::_drawPartialRect(const ImVec2 a, const ImVec2 b, const float rounding, const int rounding_corners,

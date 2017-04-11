@@ -10,13 +10,25 @@ ChatWindow::ChatWindow(const char* windowName, int clientID, std::string clientN
 	m_peerInterface = pPeerInterface;
 	m_windowCount++;
 	ss << "Chat " << m_windowCount;
-
 	m_chatNameStr = ss.str();
 }
 
 
 ChatWindow::~ChatWindow()
 {
+}
+
+bool operator < (const ImVec2& left, const ImVec2& right)
+{
+	return (left.x < right.x) || (!(left.x > right.x) && (left.x < right.x));
+}
+template <typename T1, typename T2>
+bool operator == (const std::pair<T1, T2> &left, const std::pair<T1, T2> &right)
+{
+	if (left.first == right.first && left.second == right.second)
+		return true;
+	else
+		return false;
 }
 
 void ChatWindow::Draw()
@@ -35,24 +47,50 @@ void ChatWindow::Draw()
 	}
 
 	std::string toPrint = "";
-
-	for (int i = 0; i < m_messages.size(); i++)
+	//clear positions every frame
+	m_hyperLinkPositions.clear();
+    for (int i = 0; i < m_messages.size(); i++)
 	{
-		std::vector<std::string> split = SplitByHyperlink(m_messages[i].c_str());
+		std::vector<std::string> split = SplitByHyperlink(m_messages[i].c_str(), "https://");
+
 		ImVec2 colPos = ImGui::GetCursorPos();
 
-		for (int i = 0; i < split.size(); i++)
+		/*if (m_messages.size() >= 2)
 		{
-			if (split[i].find("https://") != std::string::npos)
+			int x = 0;
+		}*/
+
+		for (int ii = 0; ii < split.size(); ii++)
+		{
+			if (split[ii].find("https://") != std::string::npos /*|| split[ii].find("http://") != std::string::npos*/)
 			{
-				ImGui::TextColored(ImVec4(0, 0, 0.933f, 1), split[i].c_str());
+				//find some way to track position of this hyperlink
+				ImGui::TextColored(ImVec4(0, 0, 0.933f, 1), split[ii].c_str());
+				ImVec2 rectMin = ImGui::GetItemRectMin();
+				ImVec2 rectMax = ImGui::GetItemRectMax();
+
+				std::pair<ImVec2, ImVec2> rectPair(rectMin, rectMax);
+
+				std::cout << split[ii] << ": " << rectMin.x << ", " << rectMin.y << " : " << rectMax.x << " : " << rectMax.y << std::endl;
+
+				if (m_hyperLinkPositions.count(rectPair) > 0)
+				{
+					//std::cout << "Overwriting" << std::endl;
+				}
+				m_hyperLinkPositions[rectPair] = split[ii];
+				
+
+				//if (i == split.size())
+				/*if (i == m_messages.size() - 1)
+					std::cout << rectMax.x << " " << rectMax.y << std::endl;*/
+
 				//ImGui::TextColored(ImVec4(0.2f, 0.4f, 0.733f, 1), split[i].c_str());
 			}
 			else
 			{
-				ImGui::Text(split[i].c_str());
+				ImGui::Text(split[ii].c_str());
 			}
-			colPos.x += ImGui::CalcTextSize(split[i].c_str()).x;
+			colPos.x += ImGui::CalcTextSize(split[ii].c_str()).x;
 			ImGui::SameLine(colPos.x);
 		}
 		ImGui::Text("\n");
@@ -64,6 +102,26 @@ void ChatWindow::Draw()
 	{
 		SendChatInvite();
 	}
+
+	if (ImGui::IsMouseClicked(0))
+	{
+		//FOR CLICKING ON HYPERLINKS
+		ImVec2 mousePos = ImGui::GetMousePos();
+		
+		std::cout << m_hyperLinkPositions.size() << std::endl;
+
+		for (std::map<std::pair<ImVec2, ImVec2>, std::string>::iterator it = m_hyperLinkPositions.begin(); it != m_hyperLinkPositions.end(); it++)
+		{
+			if (mousePos.x >= (*it).first.first.x && mousePos.x <= (*it).first.second.x)
+			{
+				if (mousePos.y >= (*it).first.first.y && mousePos.y <= (*it).first.second.y)
+				{
+					ShellExecuteA(NULL, "open", (*it).second.c_str(), NULL, NULL, SW_SHOWDEFAULT);
+				}
+			}
+		}
+	}
+
 	//std::stringstream stream;
 	//stream << "Chat ID: " << m_chatID;
 	//std::string s = stream.str();
@@ -105,14 +163,14 @@ void ChatWindow::AddChatRecipient(RakNet::SystemAddress address)
 	m_chatRecipients.push_back(address);
 }
 
-std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line)
+std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line, const char* splitBy)
 {
 	//if no hyperlinks, return 1 element vector with original line
 
 	//if hyperlinks, split line into (non-hyperlink, hyperlink, non-hyperlink) format and return as vector
 	std::vector<std::string> lineSplit;
 	std::string lineStr = line;
-	size_t found = lineStr.find("https://");
+	size_t found = lineStr.find(splitBy);
 	int begin = 0;
 	while (found != std::string::npos)
 	{
@@ -138,7 +196,7 @@ std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line)
 			lineSplit.push_back(hyperLink);
 			lineStr = "";
 		}
-		found = lineStr.find("https://");
+		found = lineStr.find(splitBy);
 	}
 
 	lineSplit.push_back(lineStr);
@@ -152,6 +210,16 @@ void ChatWindow::SendText()
 	ss << "(Client " << m_clientID << "): " << m_textInField << '[' << m_chatID;
 	RakNet::BitStream bs;
 	bs.Write((unsigned char)ID_CHAT_MESSAGE);
+	bs.Write(ss.str().c_str());
+	m_peerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
+}
+
+void ChatWindow::SendTextToAddress(RakNet::SystemAddress address)
+{
+	std::stringstream ss;
+	ss << "(Client " << m_clientID << "): " << m_textInField << '[' << m_chatID << ']' << address.ToString();
+	RakNet::BitStream bs;
+	bs.Write((unsigned char)ID_CHAT_MESSAGE_WITH_ADDRESS);
 	bs.Write(ss.str().c_str());
 	m_peerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }

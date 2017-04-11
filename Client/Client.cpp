@@ -69,6 +69,7 @@ bool Client::startup() {
 	m_score = 0;
 	m_processID = GetCurrentProcessId();
 	m_fileSender = new RakNet::FileListTransfer;
+	m_colourEditor = new ColorEditor;
 	m_sendPacketCounter = 0;
 	m_sendPacketInterval = 1;
 	setBackgroundColour(0.25f, 0.25f, 0.25f);
@@ -94,6 +95,7 @@ bool Client::startup() {
 void Client::shutdown() {	
 
 	delete m_fileSender;
+	delete m_colourEditor;
 	//delete m_chatWindow;
 	for (int i = 0; i < m_chatWindows.size(); i++)
 	{
@@ -162,7 +164,20 @@ void Client::update(float deltaTime) {
 		CreateNewChatRequest();
 	}
 
+	ImGui::Checkbox("Show Colour Picker", m_colourEditor->GetVisiblePointer());
+	
+	m_colourEditor->Draw();
+
+	if (ImGui::Button("Send File"))
+	{
+		SendFileTest();
+	}
+
+
+
 	ImGui::End();
+
+	
 
 	//draw any pop-up windows
 	
@@ -244,7 +259,10 @@ void Client::SendFileTest()
 {
 	RakNet::FileList *fileList = new RakNet::FileList;
 	FileListNodeContext context;
-	
+
+	//NOTE TO SELF: I could use the following line to open hyperlinks sent by users
+	//ShellExecuteA(NULL, "open", "http://www.google.com", NULL, NULL, SW_SHOWDEFAULT);
+
 	//put file into memory
 	//int x;
 	//int y;
@@ -254,7 +272,12 @@ void Client::SendFileTest()
 	//std::cout << data << std::endl;
 
 	//add file from disk, currently only works with txt files
-	fileList->AddFile("C:/Users/munib/Desktop/test.txt", "test.txt", context);
+	std::ofstream ofStream;
+	ofStream.open("test.txt", std::ios_base::out);
+	ofStream << "test" << std::endl;
+	ofStream.close();
+
+	fileList->AddFile("test.txt", "test.txt", context);
 
 	//two variations of AddFile exist, one for adding a file from memory and one for adding a file from disk
 	m_fileSender->Send(fileList, m_pPeerInterface, serverAddress, m_sendFileID, HIGH_PRIORITY, 0);
@@ -270,7 +293,8 @@ void Client::SendScore()
 	bsOut.Write(ss.str().c_str());
 
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
-}
+	
+} 
 
 void Client::CreateNewChatRequest()
 {
