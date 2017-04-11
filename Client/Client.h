@@ -17,6 +17,7 @@
 #include <thread>
 #include <map>
 #include <sstream>
+#include "ColorEditor.h"
 
 struct GameObject
 {
@@ -86,5 +87,5 @@ protected:
 	std::vector<ChatWindow*> m_chatWindows;
 	std::vector<PopupWindow*> m_popupWindows;
 
-	GameObject m_gameObject;
+	ColorEditor *m_colourEditor;
 };

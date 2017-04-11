@@ -15,6 +15,7 @@ enum Messages
 {
 	ID_SERVER_TEXT_MESSAGE = ID_USER_PACKET_ENUM + 1,
 	ID_CHAT_MESSAGE = ID_USER_PACKET_ENUM + 2,
+	ID_CHAT_MESSAGE_WITH_ADDRESS,
 	ID_SERVER_SET_CLIENT_ID,
 	ID_SERVER_SET_FILE_SEND_ID,
 	ID_CLIENT_CLIENT_DATA,
@@ -25,7 +26,7 @@ enum Messages
 	ID_ADD_ADDRESS_TO_CHAT_ID,
 	ID_CHAT_INVITE,
 	ID_SEND_INVITED_CLIENT_ADDRESS,
-	ID_SEND_INVITED_CLIENT_ADDRESS_FAIL
+	ID_SEND_INVITED_CLIENT_ADDRESS_FAIL,
 
 };
 
@@ -59,7 +60,9 @@ protected:
 
 	void SendDisconectionNotification(RakNet::Packet *packet);
 
-	void ReceiveAndSendBackChatMessage(RakNet::Packet *packet);
+	void ReceiveAndSendChatMessage(RakNet::Packet *packet);
+
+	void ReceiveAndSendChatMessageToAddress(RakNet::Packet *packet);
 
 private:
 	const unsigned short PORT;

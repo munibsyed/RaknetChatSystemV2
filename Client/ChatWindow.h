@@ -36,15 +36,22 @@ public:
 	std::string m_chatNameStr;
 
 protected:
-	std::vector<std::string> SplitByHyperlink(const char* line);
+	std::vector<std::string> SplitByHyperlink(const char* line, const char* splitBy);
 
 	void SendText();
+
+	void SendTextToAddress(RakNet::SystemAddress address);
 
 	void SendChatInvite();
 
 private:
 	std::vector<std::string> m_messages;
 	std::vector<RakNet::SystemAddress> m_chatRecipients; //proof of concept for now
+
+	//potential issues
+	//could become slow if there are many keys being held, because a boundary check must be performed for all of them
+	std::map<std::pair<ImVec2, ImVec2>, std::string> m_hyperLinkPositions;
+
 	char m_textInField[BUFFER_SIZE] = "Enter text";
 	char m_textInInviteField[BUFFER_SIZE] = "Enter name";
 	const char* m_windowName; //so you can attach it to the main window

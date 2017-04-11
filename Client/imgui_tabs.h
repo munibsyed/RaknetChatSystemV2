@@ -122,6 +122,8 @@ namespace ImGui
     /// Additional prototype to retrieve user-defined colors in this header (to prevent foward compatilibity conflicts)
     IMGUI_API const ImU32 GetColorU32(ImGuiUserCol_ idx, float alpha_mul = 0.0f);
 
+	void SetColor(ImGuiUserCol_ idx, ImVec4 colour);
+
     ///Bitmask flags for telling _drawPartialRect() what edges to draw
     enum _EdgeType : char {
         EDGE_NONE   = 0,
