@@ -38,6 +38,8 @@ public:
 protected:
 	std::vector<std::string> SplitByHyperlink(const char* line, const char* splitBy);
 
+	std::vector<std::string> SplitByHyperlink(const char * line, const char * splitBy1, const char * splitBy2);
+
 	void SendText();
 
 	void SendTextToAddress(RakNet::SystemAddress address);
@@ -51,6 +53,7 @@ private:
 	//potential issues
 	//could become slow if there are many keys being held, because a boundary check must be performed for all of them
 	std::map<std::pair<ImVec2, ImVec2>, std::string> m_hyperLinkPositions;
+	std::map<std::string, std::string> m_hyperLinkPositionsStr;
 
 	char m_textInField[BUFFER_SIZE] = "Enter text";
 	char m_textInInviteField[BUFFER_SIZE] = "Enter name";
@@ -58,6 +61,9 @@ private:
 	const char* m_chatName; //individual chat name, like Chat 1 or Friends
 	int m_clientID;
 	int m_chatID;
+	
+	int m_messageWindowSizeY; //most messages in a line before you have to scroll
+	bool m_seenAllMessages;
 
 	static int m_windowCount;
 
@@ -65,5 +71,6 @@ private:
 	std::string m_clientName;
 
 	RakNet::RakPeerInterface *m_peerInterface;
+	int m_mostRecentMessageSeenBy;
 };
 

@@ -126,11 +126,11 @@ namespace ImGui
 
     ///Bitmask flags for telling _drawPartialRect() what edges to draw
     enum _EdgeType : char {
-        EDGE_NONE   = 0,
-        EDGE_LEFT   = 1 << 0,
-        EDGE_TOP    = 1 << 1,
-        EDGE_RIGHT  = 1 << 2,
-        EDGE_BOTTOM = 1 << 3
+        EDGE_NONE   = 0, //0000000
+        EDGE_LEFT   = 1 << 0, //00000001
+        EDGE_TOP    = 1 << 1, //00000010
+        EDGE_RIGHT  = 1 << 2, //00000100
+        EDGE_BOTTOM = 1 << 3  //00001000
     };
 
     /// Used internally to draw a rounded rect with the different borders disabled

@@ -174,7 +174,7 @@ protected:
 	};
 
 	ThreadPool<ThreadData, int> threadPool;
-
+	
 	friend int SendIRIToAddressCB(FileListTransfer::ThreadData threadData, bool *returnOutput, void* perThreadData);
 };
 

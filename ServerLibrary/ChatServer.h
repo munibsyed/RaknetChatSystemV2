@@ -10,6 +10,7 @@
 #include <map>
 #include <vector>
 #include <sstream>
+#include <exception>
 
 enum Messages
 {
@@ -27,6 +28,8 @@ enum Messages
 	ID_CHAT_INVITE,
 	ID_SEND_INVITED_CLIENT_ADDRESS,
 	ID_SEND_INVITED_CLIENT_ADDRESS_FAIL,
+	ID_FILE_DATA,
+	ID_REINITIALIZE_FILE_HANDLERS
 
 };
 
@@ -51,8 +54,11 @@ public:
 
 	void Update();
 
+	void ReinitializeFileHandlers();
 
 protected:
+
+	void SendFileSendID(int fileSendID);
 
 	void SendFileSendID(int fileSendID, RakNet::SystemAddress &address);
 
