@@ -66,10 +66,10 @@ Client::~Client() {
 
 bool Client::startup() {
 
-	m_score = 0;
 	m_processID = GetCurrentProcessId();
-	m_fileSender = new RakNet::FileListTransfer;
+	m_fileTransfer = new RakNet::FileListTransfer;
 	m_colourEditor = new ColorEditor;
+	m_openFileDialog = new OpenFileDialog;
 	m_sendPacketCounter = 0;
 	m_sendPacketInterval = 1;
 	setBackgroundColour(0.25f, 0.25f, 0.25f);
@@ -88,14 +88,14 @@ bool Client::startup() {
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 1", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 2", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 3", m_clientID, m_pPeerInterface));
-
 	return true;
 }
 
 void Client::shutdown() {	
 
-	delete m_fileSender;
+	delete m_fileTransfer;
 	delete m_colourEditor;
+	delete m_openFileDialog;
 	//delete m_chatWindow;
 	for (int i = 0; i < m_chatWindows.size(); i++)
 	{
@@ -150,7 +150,7 @@ void Client::update(float deltaTime) {
 		{
 			std::string name = m_chatWindows[i]->m_chatNameStr;
 		//	std::cout << name.c_str() << std::endl;
-			if (ImGui::AddTab("Chat"))
+			if (ImGui::AddTab("Chat")) //if active
 			{
 				m_chatWindows[i]->Draw();
 			}
@@ -172,8 +172,6 @@ void Client::update(float deltaTime) {
 	{
 		SendFileTest();
 	}
-
-
 
 	ImGui::End();
 
@@ -199,12 +197,6 @@ void Client::update(float deltaTime) {
 	//{
 	//	m_popupWindows[i]->Draw();
 	//}
-
-
-	if (input->isKeyDown(aie::INPUT_KEY_S))
-	{
-		m_score++;
-	}
 
 	if (input->isKeyDown(aie::INPUT_KEY_ESCAPE))
 	{
@@ -257,11 +249,39 @@ void Client::OnDisconnectionSendPacket()
 
 void Client::SendFileTest()
 {
+	//once we are connected to the server
+	/*CallbackInterfaceClient* cbHandler = new CallbackInterfaceClient;
+	int fileSendID = m_fileTransfer->SetupReceive(cbHandler, true, serverAddress);*/
+
+
+	//files that work so far: .txt, .cpp, .h, .bat, 
 	RakNet::FileList *fileList = new RakNet::FileList;
 	FileListNodeContext context;
 
-	//NOTE TO SELF: I could use the following line to open hyperlinks sent by users
-	//ShellExecuteA(NULL, "open", "http://www.google.com", NULL, NULL, SW_SHOWDEFAULT);
+	//ADDITIONAL SETTINGS, PLAY AROUND WITH THIS
+	m_openFileDialog->Flags |= OFN_SHOWHELP;
+	//m_openFileDialog->InitialDir = _T("C:\\Windows\\");
+
+	m_openFileDialog->FilterIndex = 1;
+	m_openFileDialog->Title = _T("Choose File to Send");
+
+	if (m_openFileDialog->ShowDialog())
+	{
+		
+	}	
+	//HWND hwnd = new HWND;
+	//GetWindowText(hwnd, m_openFileDialog->FileName, 255);
+	std::wstring s = m_openFileDialog->FileName;
+
+	//convert from wchar to char
+	const wchar_t* wstr = s.c_str();
+	size_t wlen = wcslen(wstr) + 1;
+	char filepath[255];
+	size_t convertedChars = 0;
+	wcstombs_s(&convertedChars, filepath, wlen, wstr, _TRUNCATE);
+	
+	if (strlen(filepath) == 0)
+		return;
 
 	//put file into memory
 	//int x;
@@ -272,27 +292,71 @@ void Client::SendFileTest()
 	//std::cout << data << std::endl;
 
 	//add file from disk, currently only works with txt files
-	std::ofstream ofStream;
-	ofStream.open("test.txt", std::ios_base::out);
-	ofStream << "test" << std::endl;
-	ofStream.close();
+	//std::ofstream ofStream;
+	//ofStream.open("test.txt", std::ios_base::out);
+	//ofStream << "test" << std::endl;
+	//ofStream.close();
 
-	fileList->AddFile("test.txt", "test.txt", context);
-
-	//two variations of AddFile exist, one for adding a file from memory and one for adding a file from disk
-	m_fileSender->Send(fileList, m_pPeerInterface, serverAddress, m_sendFileID, HIGH_PRIORITY, 0);
+	std::ifstream fileStream(filepath, std::ios::binary);
 	
+	//int begin = fileStream.tellg();
+	//fileStream.seekg(0, std::ios::end);
+	//int end = fileStream.tellg();
+
+	//std::string dataBufferStr = "";
+
+	//while (fileStream)
+	//{
+	//	char c;
+	//	fileStream.get(c);
+	//	dataBufferStr += c;
+	//			
+	//}
+
+
+
+	std::string dataBufferStr((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
+	//std::cout << dataBufferStr.length() << std::endl;
+
+//	fileList->AddFile(filename, filename, dataBufferStr.c_str(), dataBufferStr.length(), dataBufferStr.length(), context);
+
+	fileStream.close();
+
+	std::string filename = "";
+	for (int i = strlen(filepath) - 1; i >= 0; i--)
+	{
+		if (filepath[i] == '\\')
+		{
+			break;
+		}
+
+		filename += filepath[i];
+	}
+
+	std::reverse(filename.begin(), filename.end());
+
+    fileList->AddFile(filepath, filename.c_str(), context);
+	//two variations of AddFile exist, one for adding a file from memory and one for adding a file from disk
+	std::cout << filepath << std::endl;
+	std::cout << "Sending to: " << m_sendFileID << std::endl;
+	//NOTE -------- NOT SURE IF FILE_ID GETS SET PROPERLY FOR ALL CLIENTS -------- NOTE
+	m_fileTransfer->Send(fileList, 0, serverAddress, m_sendFileID, HIGH_PRIORITY, 0);
+	delete fileList;
+	
+	RakNet::BitStream bsOut;
+	bsOut.Write((unsigned char)ID_REINITIALIZE_FILE_HANDLERS);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, serverAddress, false);
 }
 
 void Client::SendScore()
 {
-	std::stringstream ss;
+	/*std::stringstream ss;
 	ss << m_clientID << "," << m_score;
 	RakNet::BitStream bsOut;
 	bsOut.Write((unsigned char)ID_SUBMIT_NEW_SCORE);
 	bsOut.Write(ss.str().c_str());
 
-	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);*/
 	
 } 
 
@@ -327,7 +391,7 @@ void Client::InitializeClientConnection()
 		
 	//call startup on m_peerInterface with max connections = 1
 	m_pPeerInterface->Startup(1, &sd, 1);
-	m_pPeerInterface->AttachPlugin(m_fileSender);
+	m_pPeerInterface->AttachPlugin(m_fileTransfer);
 
 	std::cout << "Connecting to server at " << IP << std::endl;
 

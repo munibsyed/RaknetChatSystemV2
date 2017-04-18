@@ -8,7 +8,6 @@ ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : POR
 	std::cout << "Starting up server..." << std::endl;
 	m_peerInterface = RakNet::RakPeerInterface::GetInstance();
 	m_fileListTransfer = new RakNet::FileListTransfer;
-
 	RakNet::SocketDescriptor sd(PORT, 0);
 	m_peerInterface->Startup(m_maxClients, &sd, 1);
 	m_peerInterface->SetMaximumIncomingConnections(m_maxClients);
@@ -16,13 +15,15 @@ ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : POR
 	m_runUpdateLoop = true;
 	m_sendChatMsgBackToSender = true;
 
+	m_fileListTransfer->Update();
 	m_callbackInterface = new CallbackInterface();
 
 	//find out if this returns a different m_fileSendID depending on what system address is given. This setup probably won't work
 	m_nextClientID = 0;
 	m_nextChatID = 0;
-
-	m_fileListTransfer->StartIncrementalReadThreads(1);
+	m_fileSendID = -1;
+	//PROBABLY NOT NECESSARY
+	//m_fileListTransfer->StartIncrementalReadThreads(1);
 
 }
 
@@ -31,6 +32,7 @@ ChatServer::~ChatServer()
 {
 	RakNet::RakPeerInterface::DestroyInstance(m_peerInterface);
 	RakNet::FileListTransfer::DestroyInstance(m_fileListTransfer);
+	delete m_callbackInterface;
 }
 
 void ChatServer::Update()
@@ -38,157 +40,202 @@ void ChatServer::Update()
 	//m_fileListTransfer->StartIncrementalReadThreads(1);
 
 	RakNet::Packet *packet = nullptr;
+
 	while (m_runUpdateLoop == true)
 	{
-		for (packet = m_peerInterface->Receive(); packet; m_peerInterface->DeallocatePacket(packet), packet = m_peerInterface->Receive())
+		try
 		{
-			switch (packet->data[0])
+			for (packet = m_peerInterface->Receive(); packet; m_peerInterface->DeallocatePacket(packet), packet = m_peerInterface->Receive())
 			{
-				//inspect first byte of the packet to receive its ID
-
-			case ID_NEW_INCOMING_CONNECTION:
-			{
-				std::cout << "A connection is incoming." << std::endl;
-
-				//FILE TRANSFER SETUP YET TO BE ADDED
-
-				//setup for file receive
-				//testCB = new TestCB;
-				//fileSendID = fileReceiver->SetupReceive(testCB, true, packet->systemAddress);
-				m_fileSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, true, packet->systemAddress);
-				SendNewClientID(packet->systemAddress);
-				SendFileSendID(m_fileSendID, packet->systemAddress);
-
-				//add to map
-				std::stringstream ss;
-				ss << "Client " << m_nextClientID - 1;
-				m_clientNameToAddress[ss.str()] = packet->systemAddress;
-
-				break;
-			}
-			case ID_DISCONNECTION_NOTIFICATION:
-			{
-				//Inform all other clients about which client has been disconnected
-				std::cout << "A client has disconnected." << std::endl;
-				SendDisconectionNotification(packet);
-				break;
-			}
-			case ID_CONNECTION_LOST:
-				std::cout << "A client lost the connection." << std::endl;
-				break;
-			case ID_CHAT_MESSAGE:
-			{
-				std::cout << "Received chat message." << std::endl;
-				ReceiveAndSendChatMessage(packet);
-				break;
-			}
-
-			case ID_CHAT_MESSAGE_WITH_ADDRESS:
-			{
-				std::cout << "Received chat message." << std::endl;
-				ReceiveAndSendChatMessageToAddress(packet);
-				break;
-			}
-
-			case ID_CLIENT_CLIENT_DATA:
-			{
-				RakNet::BitStream bsOut(packet->data, packet->length, false);
-				m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, true);
-				break;
-			}
-
-			case ID_CREATE_NEW_CHAT_REQUEST:
-			{
-				RakNet::BitStream bsOut;
-				bsOut.Write((unsigned char)ID_CREATE_NEW_CHAT_REQUEST);
-				RakNet::RakString str;
-				str = std::to_string(m_nextChatID).c_str();
-				bsOut.Write(str);
-
-				m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
-
-				m_nextChatID++;
-				break;
-			}
-
-			case ID_CHAT_INVITE:
-			{
-				RakNet::BitStream bsIn(packet->data, packet->length, false);
-				bsIn.IgnoreBytes(sizeof(unsigned char));
-				RakNet::RakString str;
-				bsIn.Read(str);
-
-				//cut off the chatID from the string
-				std::string strTrimmed;
-				std::string stdStr = str.C_String();
-				int bracePosition = 0;
-				for (int i = stdStr.length() - 1; i >= 0; i--)
+				switch (packet->data[0])
 				{
-					if (stdStr[i] == '[')
-					{
-						bracePosition = i;
-						break;
-					}
-				}
+					//inspect first byte of the packet to receive its ID
 
-				//trim [chatID from string
-				strTrimmed = stdStr.substr(0, bracePosition);
-				//get chat ID
-				std::string chatIDStr = stdStr.substr(bracePosition+1, stdStr.length());
-				int chatID = std::stoi(chatIDStr);
-
-				//send back address of invited client
-				if (m_clientNameToAddress.count(strTrimmed.c_str()) > 0)
+				case ID_NEW_INCOMING_CONNECTION:
 				{
-					RakNet::SystemAddress address = m_clientNameToAddress[strTrimmed.c_str()];
-					std::cout << "Retrieved: " << address.ToString() << std::endl;
-					RakNet::BitStream bsOut;
-					std::stringstream ss;
-					ss << address.ToString() << "[" << chatID;
-					bsOut.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS);
-					bsOut.Write(ss.str().c_str());
-					//send address of invited client back to original sender
-					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+					std::cout << "A connection is incoming." << std::endl;
 
-					//send sender address to invited client
-					std::stringstream ss2;
-					ss2 << packet->systemAddress.ToString() << "[" << chatID;
-					RakNet::BitStream bsOut2;
-					bsOut2.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS);
-					bsOut2.Write(ss2.str().c_str());
+					//FILE TRANSFER SETUP YET TO BE ADDED
 
-					m_peerInterface->Send(&bsOut2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, address, false);
-
-
-				}
-
-				else
-				{
-					//send special failure packet
+					//setup for file receive
+					//testCB = new TestCB;
+					//fileSendID = fileReceiver->SetupReceive(testCB, true, packet->systemAddress);
+					SendNewClientID(packet->systemAddress);
 					
-					RakNet::BitStream bsOut;
-					bsOut.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS_FAIL);
-					bsOut.Write(chatIDStr);
+					m_fileSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
+					
+					SendFileSendID(m_fileSendID, packet->systemAddress);
+					//add to map
+					std::stringstream ss;
+					ss << "Client " << m_nextClientID - 1;
+					m_clientNameToAddress[ss.str()] = packet->systemAddress;
 
-					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+					break;
+				}
+				case ID_DISCONNECTION_NOTIFICATION:
+				{
+					//Inform all other clients about which client has been disconnected
+					std::cout << "A client has disconnected." << std::endl;
+					SendDisconectionNotification(packet);
+					break;
+				}
+				case ID_CONNECTION_LOST:
+					std::cout << "A client lost the connection." << std::endl;
+					break;
+				case ID_CHAT_MESSAGE:
+				{
+					std::cout << "Received chat message." << std::endl;
+					ReceiveAndSendChatMessage(packet);
+					break;
 				}
 
-				break;
-			}
+				case ID_CHAT_MESSAGE_WITH_ADDRESS:
+				{
+					std::cout << "Received chat message." << std::endl;
+					ReceiveAndSendChatMessageToAddress(packet);
+					break;
+				}
+
+				case ID_CLIENT_CLIENT_DATA:
+				{
+					RakNet::BitStream bsOut(packet->data, packet->length, false);
+					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, true);
+					break;
+				}
+
+				case ID_CREATE_NEW_CHAT_REQUEST:
+				{
+					RakNet::BitStream bsOut;
+					bsOut.Write((unsigned char)ID_CREATE_NEW_CHAT_REQUEST);
+					RakNet::RakString str;
+					str = std::to_string(m_nextChatID).c_str();
+					bsOut.Write(str);
+
+					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
+
+					m_nextChatID++;
+					break;
+				}
+
+				case ID_CHAT_INVITE:
+				{
+					RakNet::BitStream bsIn(packet->data, packet->length, false);
+					bsIn.IgnoreBytes(sizeof(unsigned char));
+					RakNet::RakString str;
+					bsIn.Read(str);
+
+					//cut off the chatID from the string
+					std::string strTrimmed;
+					std::string stdStr = str.C_String();
+					int bracePosition = 0;
+					for (int i = stdStr.length() - 1; i >= 0; i--)
+					{
+						if (stdStr[i] == '[')
+						{
+							bracePosition = i;
+							break;
+						}
+					}
+
+					//trim [chatID from string
+					strTrimmed = stdStr.substr(0, bracePosition);
+					//get chat ID
+					std::string chatIDStr = stdStr.substr(bracePosition + 1, stdStr.length());
+					int chatID = std::stoi(chatIDStr);
+
+					//send back address of invited client
+					if (m_clientNameToAddress.count(strTrimmed.c_str()) > 0)
+					{
+						RakNet::SystemAddress address = m_clientNameToAddress[strTrimmed.c_str()];
+						std::cout << "Retrieved: " << address.ToString() << std::endl;
+						RakNet::BitStream bsOut;
+						std::stringstream ss;
+						ss << address.ToString() << "[" << chatID;
+						bsOut.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS);
+						bsOut.Write(ss.str().c_str());
+						//send address of invited client back to original sender
+						m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+
+						//send sender address to invited client
+						std::stringstream ss2;
+						ss2 << packet->systemAddress.ToString() << "[" << chatID;
+						RakNet::BitStream bsOut2;
+						bsOut2.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS);
+						bsOut2.Write(ss2.str().c_str());
+
+						m_peerInterface->Send(&bsOut2, HIGH_PRIORITY, RELIABLE_ORDERED, 0, address, false);
 
 
-			default:
-			{
-				std::cout << "Received a message with an unknown ID: " << packet->data[0] << std::endl;
-				RakNet::FileList *fileList = RakNet::FileList::GetInstance();
-				RakNet::FileListTransfer *fileListTransfer = RakNet::FileListTransfer::GetInstance();
+					}
 
-				break;
+					else
+					{
+						//send special failure packet
 
-			}
+						RakNet::BitStream bsOut;
+						bsOut.Write((unsigned char)ID_SEND_INVITED_CLIENT_ADDRESS_FAIL);
+						bsOut.Write(chatIDStr);
+
+						m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+					}
+
+					break;
+				}
+
+				case ID_FILE_DATA:
+				{
+					RakNet::BitStream bsIn(packet->data, packet->length, false);
+					RakNet::FileList *fileList = RakNet::FileList::GetInstance();
+					fileList->Deserialize(&bsIn);
+
+					break;
+				}
+
+				case ID_REINITIALIZE_FILE_HANDLERS:
+				{
+					ReinitializeFileHandlers();
+					int newSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
+					SendFileSendID(newSendID, packet->systemAddress);
+					break;
+				}
+
+				default:
+				{
+					std::cout << "Received a message with an unknown ID: " << packet->data[0] << std::endl;
+					RakNet::FileList *fileList = RakNet::FileList::GetInstance();
+					RakNet::FileListTransfer *fileListTransfer = RakNet::FileListTransfer::GetInstance();
+					break;
+
+				}
+				}
 			}
 		}
+		catch (...)
+		{
+			std::cout << "Runtime error!" << std::endl;
+		}
 	}
+}
+
+void ChatServer::ReinitializeFileHandlers()
+{
+	std::cout << "Reinitializing" << std::endl;
+	//m_peerInterface->DetachPlugin(m_fileListTransfer);
+	////delete m_fileListTransfer;
+	////m_fileListTransfer = new RakNet::FileListTransfer;
+	//m_peerInterface->AttachPlugin(m_fileListTransfer);
+
+	delete m_callbackInterface;
+	m_callbackInterface = new CallbackInterface();
+}
+
+void ChatServer::SendFileSendID(int fileSendID)
+{
+	RakNet::BitStream bs;
+	bs.Write((unsigned char)ID_SERVER_SET_FILE_SEND_ID);
+	bs.Write(fileSendID);
+
+	m_peerInterface->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);
 }
 
 void ChatServer::SendFileSendID(int fileSendID, RakNet::SystemAddress &address)

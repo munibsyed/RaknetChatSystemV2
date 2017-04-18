@@ -41,7 +41,7 @@ ImGui::ImGuiUserStyle::ImGuiUserStyle(){
     Colors[ImGuiUserCol_TabTitleTextNormal] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
     Colors[ImGuiUserCol_TabTitleTextSelected] = ImVec4(1.0f, 1.0f, 1.0f, 1.00f);
     Colors[ImGuiUserCol_TabBorder] = Colors[ImGuiUserCol_TabNormal] * ImVec4(1.15f,1.15f,1.15f,1.0f);
-    Colors[ImGuiUserCol_TabBorderShadow] = Colors[ImGuiUserCol_TabNormal] * ImVec4(0.65f,0.65f,0.65f,1.0f);
+    Colors[ImGuiUserCol_TabBorderShadow] =	Colors[ImGuiUserCol_TabNormal] * ImVec4(0.65f,0.65f,0.65f,1.0f);
     Colors[ImGuiUserCol_TabHover] = Colors[ImGuiUserCol_TabNormal] * ImVec4(1.15f,1.15f,1.15f,1.0f);
 }
 
@@ -63,25 +63,25 @@ void ImGui::_drawPartialRect(const ImVec2 a, const ImVec2 b, const float roundin
     float r = rounding;
     r = ImMin(r, fabsf(b.x-a.x) * ( ((rounding_corners&(1|2))==(1|2)) || ((rounding_corners&(4|8))==(4|8)) ? 0.5f : 1.0f ) - 1.0f);
     r = ImMin(r, fabsf(b.y-a.y) * ( ((rounding_corners&(1|8))==(1|8)) || ((rounding_corners&(2|4))==(2|4)) ? 0.5f : 1.0f ) - 1.0f);
-
+		
     if (r <= 0.0f || rounding_corners == 0)
     {
         if (edges & EDGE_TOP) {
             dl->PathLineTo(a);
             dl->PathLineTo(ImVec2(b.x, a.y));
-            dl->PathStroke(color, false, 1.0f);
+            dl->PathStroke(color, false);
         } if (edges & EDGE_RIGHT) {
             dl->PathLineTo(ImVec2(b.x, a.y));
-            dl->PathStroke(color, false, 1.0f);
+            dl->PathStroke(color, false);
             dl->PathLineTo(b);
         } if (edges & EDGE_BOTTOM){
             dl->PathLineTo(b);
             dl->PathLineTo(ImVec2(a.x,b.y));
-            dl->PathStroke(color, false, 1.0f);
+            dl->PathStroke(color, false);
         } if (edges & EDGE_LEFT){
             dl->PathLineTo(ImVec2(a.x,b.y));
             dl->PathLineTo(a);
-            dl->PathStroke(color, false, 1.0f);
+            dl->PathStroke(color, false);
         }
     }
     else
@@ -212,16 +212,16 @@ void ImGui::TabBar::_drawTabBarTop(const char *label) {
             // Draw background rect
             dl->AddRectFilled(bb.Min, bb.Max, col, rounding,
                               ImGuiCorner_TopLeft | ImGuiCorner_TopRight);
-            // Draw the border
+            // Draw the border. Make it less prominent (EDGE_LEFT | EDGE_RIGHT) because it is not the selected one
             _drawPartialRect(bb.Min, bb.Max,rounding, ImGuiCorner_TopLeft | ImGuiCorner_TopRight, dl,
-                             (_EdgeType) (EDGE_LEFT | EDGE_RIGHT | EDGE_TOP), GetColorU32(ImGuiUserCol_TabBorderShadow));
+                             (_EdgeType) (EDGE_LEFT | EDGE_RIGHT), GetColorU32(ImGuiUserCol_TabBorderShadow));
             // Draw the text
             const ImVec2 text_size = CalcTextSize(tabTitles[i]);
             const ImVec2 text_pos = pos + ImVec2(offs+((xr-xl) - text_size.x)/2.0f,((text_size.y - frame_padding.y*2.0f)/2.0f));
             dl->AddText(text_pos,GetColorU32(ImGuiUserCol_TabTitleTextNormal),tabTitles[i]);
 
 
-        } else{
+		} else{
             selected_offset = offs;
             selected_idx = i;
             if (i == 0) {
@@ -244,7 +244,7 @@ void ImGui::TabBar::_drawTabBarTop(const char *label) {
     dl->AddRectFilled(bb.Min, bb.Max, GetColorU32(ImGuiUserCol_TabNormal), rounding, ImGuiCorner_TopLeft | ImGuiCorner_TopRight);
 
     dl->AddRectFilled(bb.Min, bb.Max, ImColor(1.0f, 1.0f, 1.0f, 0.35f), rounding, ImGuiCorner_TopLeft | ImGuiCorner_TopRight);
-    // Draw the border
+    // Draw the border, only the edges specified
     _drawPartialRect(bb.Min, bb.Max,rounding, ImGuiCorner_TopLeft | ImGuiCorner_TopRight, dl,
                      (_EdgeType) (EDGE_LEFT | EDGE_RIGHT | EDGE_TOP), GetColorU32(ImGuiUserCol_TabBorderShadow),
                      true,selected_shadow_edges);
