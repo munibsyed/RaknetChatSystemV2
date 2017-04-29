@@ -5,8 +5,9 @@
 #include <fstream>
 #include <sstream>
 #include <thread>
+#include <deque>
 #include "..\bootstrap\imgui_glfw3.h"
-#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_IMPLEMENTATION
 #include "..\dependencies\stb\stb_image.h"
 
 #define SPEED 5
@@ -70,9 +71,92 @@ bool Client::startup() {
 	m_fileTransfer = new RakNet::FileListTransfer;
 	m_colourEditor = new ColorEditor;
 	m_openFileDialog = new OpenFileDialog;
+	m_callbackInterface = new CallbackInterfaceClient;
+	m_isSendingFile = false;
 	m_sendPacketCounter = 0;
 	m_sendPacketInterval = 1;
 	setBackgroundColour(0.25f, 0.25f, 0.25f);
+	m_sendFileID = -1;
+
+	std::ifstream freqDatabase;
+	freqDatabase.open("emojiFrequencyDatabase.txt");
+	std::vector<std::string> allLines;
+	std::map<std::string, int> emojiNamesWithFrequencies;
+	if (freqDatabase.is_open())
+	{
+		while (freqDatabase.eof() == false)
+		{
+			std::string line;
+			std::getline(freqDatabase, line);
+			allLines.push_back(line);
+
+			if (line != "" && line != "\n")
+			{
+				if (emojiNamesWithFrequencies.count(line) == 0)
+				{
+					emojiNamesWithFrequencies[line] = 1;
+				}
+
+				else
+				{
+					emojiNamesWithFrequencies[line] += 1;
+				}
+			}
+		}
+	}
+
+	std::vector<std::pair<int, std::string>> emojiFrequenciesWithNamesVector;
+	for (std::map <std::string, int> ::iterator it = emojiNamesWithFrequencies.begin(); it != emojiNamesWithFrequencies.end(); it++)
+	{
+		emojiFrequenciesWithNamesVector.push_back(std::make_pair((*it).second, (*it).first));
+	}
+
+	std::sort(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
+	std::reverse(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
+	for (int i = 0; i < emojiFrequenciesWithNamesVector.size(); i++)
+	{
+		std::stringstream ss;
+		ss << "160x160\\" << emojiFrequenciesWithNamesVector[i].second << ".png";
+		aie::Texture* texture = new aie::Texture(emojiFrequenciesWithNamesVector[i].second.c_str());
+
+		m_textures.push_back(texture);
+		m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), emojiFrequenciesWithNamesVector[i].second));
+	}
+
+	for (int i = 1; i <= 846; i++)
+	{
+		std::stringstream ss;
+		ss << "160x160\\" << i << ".png";
+		bool hasNotBeenAddedAlready = true;
+		for (int ii = 0; ii < emojiFrequenciesWithNamesVector.size(); ii++)
+		{	
+			if (ss.str() == emojiFrequenciesWithNamesVector[ii].second)
+			{
+				hasNotBeenAddedAlready = false;
+			}
+		}
+
+		if (hasNotBeenAddedAlready == true)
+		{
+			aie::Texture* texture = new aie::Texture(ss.str().c_str());
+		
+			m_textures.push_back(texture);
+			m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), ss.str()));
+		}
+	}
+
+	//figure out how to write a sorting key function
+	
+	//(5,3,2)
+	//(1,2,3,4,5)
+	//5,3,2,1,4
+	
+
+	//ImGui::ModifyStyle(1, ImVec4(1, 1, 1, 1));
+
+	m_ImGuiButtonColour = ImVec4(0.67f, 0.4f, 0.4f, 0.6f);
+	m_ImGuiButtonHoveredColour = ImVec4(0.67f, 0.4f, 0.4f, 1.0f);
+	m_ImGuiButtonActiveColour = ImVec4(0.8f, 0.5f, 0.5f, 1.0f);
 
 	// initialise gizmo primitive counts
 	Gizmos::create(10000, 10000, 10000, 10000);
@@ -85,13 +169,14 @@ bool Client::startup() {
 
 	HandleNetworkConnections();
 
+	counter = 0;
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 1", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 2", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 3", m_clientID, m_pPeerInterface));
 	return true;
 }
 
-void Client::shutdown() {	
+void Client::shutdown() {
 
 	delete m_fileTransfer;
 	delete m_colourEditor;
@@ -107,15 +192,27 @@ void Client::shutdown() {
 		delete m_popupWindows[i];
 	}
 
+	for (int i = 0; i < m_textures.size(); i++)
+	{
+		delete m_textures[i];
+	}
+
 	Gizmos::destroy();
+	delete m_callbackInterface;
 }
+
 
 void Client::update(float deltaTime) {
 	//Listen for incoming message
 	HandleNetworkMessages(false);
-
+	counter++;
 	// query time since application started
 	float time = getTime();
+	
+	//if (counter % 1000 == 0)
+	//{
+	//	SendFileTest();
+	//}
 
 	// wipe the gizmos clean for this frame
 	Gizmos::clear();
@@ -140,7 +237,7 @@ void Client::update(float deltaTime) {
 
 	/*tabs*/
 	ImGui::Begin("Chat");
-
+	
 	if (m_chatWindows.size() > 0)
 	{
 
@@ -168,9 +265,33 @@ void Client::update(float deltaTime) {
 	
 	m_colourEditor->Draw();
 
-	if (ImGui::Button("Send File"))
+	if (m_isSendingFile == true)
 	{
-		SendFileTest();
+		m_ImGuiButtonColour = ImVec4(0.5f, 0.5f, 0.5f, 1);
+		m_ImGuiButtonHoveredColour = ImVec4(0.5f, 0.5f, 0.5f, 1);
+		m_ImGuiButtonActiveColour = ImVec4(0.5f, 0.5f, 0.5f, 1);
+	}
+	else
+	{
+		m_ImGuiButtonColour = ImVec4(0.67f, 0.4f, 0.4f, 0.6f);
+		m_ImGuiButtonHoveredColour = ImVec4(0.67f, 0.4f, 0.4f, 1.0f);
+		m_ImGuiButtonActiveColour = ImVec4(0.8f, 0.5f, 0.5f, 1.0f);
+	}
+
+	//SEND FILE
+	if (ImGui::ButtonColoured("Send File", ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonColour), ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonHoveredColour), ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonActiveColour))
+	&& m_isSendingFile == false)
+	{
+		m_isSendingFile = true;
+		//
+
+		if (m_fileSendThreads.size() > 0) //if threads have already been created
+		{
+			m_fileSendThreads[m_fileSendThreads.size() - 1].join();
+		}
+
+		m_fileSendThreads.push_back(std::thread(&Client::SendFileTest, this));
+		//	SendFileTest();
 	}
 
 	ImGui::End();
@@ -235,6 +356,8 @@ void Client::OnSetClientIDPacket(RakNet::Packet* packet)
 	m_clientName = ss.str();
 
 	std::cout << "Set client ID to: " << m_clientID << std::endl;
+	m_receiveFileID = m_fileTransfer->SetupReceive(m_callbackInterface, true, serverAddress);
+	SendFileReceiveID(m_receiveFileID);
 }
 
 void Client::OnDisconnectionSendPacket()
@@ -252,8 +375,7 @@ void Client::SendFileTest()
 	//once we are connected to the server
 	/*CallbackInterfaceClient* cbHandler = new CallbackInterfaceClient;
 	int fileSendID = m_fileTransfer->SetupReceive(cbHandler, true, serverAddress);*/
-
-
+	
 	//files that work so far: .txt, .cpp, .h, .bat, 
 	RakNet::FileList *fileList = new RakNet::FileList;
 	FileListNodeContext context;
@@ -281,44 +403,14 @@ void Client::SendFileTest()
 	wcstombs_s(&convertedChars, filepath, wlen, wstr, _TRUNCATE);
 	
 	if (strlen(filepath) == 0)
+	{
+		m_isSendingFile = false;
 		return;
-
-	//put file into memory
-	//int x;
-	//int y;
-	//int imageFormat = 0;
-
-	//unsigned char* data = stbi_load("C:/Users/munib/Desktop/testImage.png", &x, &y, &imageFormat, STBI_default);
-	//std::cout << data << std::endl;
-
-	//add file from disk, currently only works with txt files
-	//std::ofstream ofStream;
-	//ofStream.open("test.txt", std::ios_base::out);
-	//ofStream << "test" << std::endl;
-	//ofStream.close();
+	}
 
 	std::ifstream fileStream(filepath, std::ios::binary);
-	
-	//int begin = fileStream.tellg();
-	//fileStream.seekg(0, std::ios::end);
-	//int end = fileStream.tellg();
-
-	//std::string dataBufferStr = "";
-
-	//while (fileStream)
-	//{
-	//	char c;
-	//	fileStream.get(c);
-	//	dataBufferStr += c;
-	//			
-	//}
-
-
 
 	std::string dataBufferStr((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
-	//std::cout << dataBufferStr.length() << std::endl;
-
-//	fileList->AddFile(filename, filename, dataBufferStr.c_str(), dataBufferStr.length(), dataBufferStr.length(), context);
 
 	fileStream.close();
 
@@ -335,30 +427,37 @@ void Client::SendFileTest()
 
 	std::reverse(filename.begin(), filename.end());
 
-    fileList->AddFile(filepath, filename.c_str(), context);
+    fileList->AddFile(filepath, filename.c_str(), context);	
 	//two variations of AddFile exist, one for adding a file from memory and one for adding a file from disk
-	std::cout << filepath << std::endl;
 	std::cout << "Sending to: " << m_sendFileID << std::endl;
 	//NOTE -------- NOT SURE IF FILE_ID GETS SET PROPERLY FOR ALL CLIENTS -------- NOTE
-	m_fileTransfer->Send(fileList, 0, serverAddress, m_sendFileID, HIGH_PRIORITY, 0);
+	if (m_sendFileID != -1)
+		m_fileTransfer->Send(fileList, 0, serverAddress, m_sendFileID, HIGH_PRIORITY, 0);
 	delete fileList;
 	
+	std::cout << "Sent." << std::endl;
+
+
 	RakNet::BitStream bsOut;
 	bsOut.Write((unsigned char)ID_REINITIALIZE_FILE_HANDLERS);
+	bsOut.Write(std::to_string(m_clientID).c_str());
 	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, serverAddress, false);
+
+	m_isSendingFile = false;
 }
 
-void Client::SendScore()
-{
-	/*std::stringstream ss;
-	ss << m_clientID << "," << m_score;
-	RakNet::BitStream bsOut;
-	bsOut.Write((unsigned char)ID_SUBMIT_NEW_SCORE);
-	bsOut.Write(ss.str().c_str());
 
-	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, RakNet::UNASSIGNED_SYSTEM_ADDRESS, true);*/
-	
-} 
+void Client::SendFileReceiveID(int id)
+{
+	RakNet::BitStream bsOut;
+	bsOut.Write((unsigned char)ID_CLIENT_SET_FILE_SEND_ID);
+	std::stringstream ss;
+	ss << "Client " << m_clientID << "|" << m_receiveFileID;
+	RakNet::RakString rakStr = ss.str().c_str();
+	bsOut.Write(rakStr);
+	m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, serverAddress, false);
+
+}
 
 void Client::CreateNewChatRequest()
 {
@@ -556,6 +655,7 @@ void Client::HandleNetworkMessages(bool loop)
 
 				ChatWindow* window = new ChatWindow("Chat", m_clientID, m_clientName, m_pPeerInterface);
 				window->SetChatID(chatID);
+				window->SetTextureIDs(&m_textureIDs);
 
 				//send client ID back to be put in map?
 
@@ -618,6 +718,22 @@ void Client::HandleNetworkMessages(bool loop)
 
 				m_popupWindows.push_back(new PopupWindow("Error message", "Invalid client name"));
 				//create error window/pop up window class?
+
+				break;
+			}
+
+			case ID_REINITIALIZE_FILE_HANDLERS:
+			{
+				//delete m_callbackInterface;
+				m_callbackInterface = new CallbackInterfaceClient;
+				int newID = m_fileTransfer->SetupReceive(m_callbackInterface, true, serverAddress);
+				RakNet::BitStream bsOut;
+				bsOut.Write((unsigned char)ID_CLIENT_SET_FILE_SEND_ID);
+				std::stringstream ss;
+				ss << "Client " << m_clientID << '|' << newID;
+				bsOut.Write(ss.str().c_str());
+
+				m_pPeerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, serverAddress, false);
 
 				break;
 			}

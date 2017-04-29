@@ -17,6 +17,7 @@ ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : POR
 
 	m_fileListTransfer->Update();
 	m_callbackInterface = new CallbackInterface();
+	m_callbackInterface2 = new CallbackInterface();
 
 	//find out if this returns a different m_fileSendID depending on what system address is given. This setup probably won't work
 	m_nextClientID = 0;
@@ -31,8 +32,14 @@ ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : POR
 ChatServer::~ChatServer()
 {
 	RakNet::RakPeerInterface::DestroyInstance(m_peerInterface);
-	RakNet::FileListTransfer::DestroyInstance(m_fileListTransfer);
+	delete m_fileListTransfer;
 	delete m_callbackInterface;
+	delete m_callbackInterface2;
+
+	for (int i = 0; i < m_fileListTransferList.size(); i++)
+	{
+		delete m_fileListTransferList[i];
+	}
 }
 
 void ChatServer::Update()
@@ -62,9 +69,20 @@ void ChatServer::Update()
 					//fileSendID = fileReceiver->SetupReceive(testCB, true, packet->systemAddress);
 					SendNewClientID(packet->systemAddress);
 					
-					m_fileSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
+					if (m_fileSendID == -1) //if this is the first connection
+					{
+						m_fileSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
+						SendFileSendID(m_fileSendID, packet->systemAddress);
+					}
+					else
+					{
+						RakNet::FileListTransfer *fList = new RakNet::FileListTransfer;
+						int fileSendID = fList->SetupReceive(m_callbackInterface2, false, packet->systemAddress);
+						m_fileListTransferList.push_back(fList);
+						SendFileSendID(fileSendID, packet->systemAddress);
+					}
 					
-					SendFileSendID(m_fileSendID, packet->systemAddress);
+
 					//add to map
 					std::stringstream ss;
 					ss << "Client " << m_nextClientID - 1;
@@ -193,9 +211,56 @@ void ChatServer::Update()
 
 				case ID_REINITIALIZE_FILE_HANDLERS:
 				{
-					ReinitializeFileHandlers();
-					int newSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
-					SendFileSendID(newSendID, packet->systemAddress);
+					//if (m_callbackInterface->IsReadyToBounceBackFile())
+					//{
+					//	std::cout << "Sending back." << std::endl;
+					//	//crashes like on the server end
+					//	SendFile(m_callbackInterface->GetFileList());
+					//}
+					
+					//get ID/client name of original sender
+					RakNet::BitStream bsIn(packet->data, packet->length, false);
+					bsIn.IgnoreBytes(sizeof(unsigned char));
+					RakNet::RakString str;
+					bsIn.Read(str);
+					std::string stdStr = str.C_String();
+			//	SendFile(m_callbackInterface->GetFileList(), stdStr);
+					ReinitializeFileHandlers(); //self
+					//also send one of these packets to the client who sent the file?
+					if (stdStr == "0")
+					{
+						int newSendID = m_fileListTransfer->SetupReceive(m_callbackInterface, false, packet->systemAddress);
+						SendFileSendID(newSendID, packet->systemAddress);
+					}
+					else
+					{
+						int newSendID = m_fileListTransferList[0]->SetupReceive(m_callbackInterface2, false, packet->systemAddress);
+						SendFileSendID(newSendID, packet->systemAddress);
+						std::cout << "Sending to second client: " << newSendID << std::endl;
+					}
+
+					//at this point, we know that the file has been sent back to the sender, so this is a good point to send a request to reinitialize file handlers
+					RakNet::BitStream bsOut;
+					bsOut.Write((unsigned char)ID_REINITIALIZE_FILE_HANDLERS);
+					m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+
+					break;
+				}
+
+				case ID_CLIENT_SET_FILE_SEND_ID:
+				{
+					RakNet::BitStream bsIn(packet->data, packet->length, false);
+					bsIn.IgnoreBytes(sizeof(unsigned char));
+
+					RakNet::RakString str;
+					bsIn.Read(str);
+
+					std::string stdStr = str.C_String();
+					std::string clientName = stdStr.substr(0, stdStr.find('|'));
+					std::string receiveID = stdStr.substr(stdStr.find('|') + 1, stdStr.length());
+					
+					m_clientNameToSendID[clientName] = std::stoi(receiveID);
+
 					break;
 				}
 
@@ -227,6 +292,26 @@ void ChatServer::ReinitializeFileHandlers()
 
 	delete m_callbackInterface;
 	m_callbackInterface = new CallbackInterface();
+	delete m_callbackInterface2;
+	m_callbackInterface2 = new CallbackInterface();
+}
+
+void ChatServer::SendFile(RakNet::FileList *fList, std::string id)
+{
+	std::stringstream ss;
+	ss << "Client " << id;
+	for (std::map<std::string, RakNet::SystemAddress>::iterator it = m_clientNameToAddress.begin(); it != m_clientNameToAddress.end(); it++)
+	{
+		//if (ss.str() != (*it).first) //BEFORE WE GET MULTIPLE CLIENTS WORKING, WE SHOULD GET MULTIPLE FILES TO THE SAME CLIENT WORKING	
+		{
+			int id = m_clientNameToSendID[(*it).first];
+			std::cout << "Sending to " << id << std::endl;
+			m_fileListTransfer->Send(fList, m_peerInterface, (*it).second, id, HIGH_PRIORITY, 0);
+		}
+	}
+
+	//will this cause a problem?
+	delete fList;
 }
 
 void ChatServer::SendFileSendID(int fileSendID)

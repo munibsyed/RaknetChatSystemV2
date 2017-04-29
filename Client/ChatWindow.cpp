@@ -1,7 +1,5 @@
 #include "ChatWindow.h"
 
-
-
 ChatWindow::ChatWindow(const char* windowName, int clientID, std::string clientName, RakNet::RakPeerInterface* pPeerInterface)
 {
 	m_windowName = windowName;
@@ -14,6 +12,14 @@ ChatWindow::ChatWindow(const char* windowName, int clientID, std::string clientN
 	m_mostRecentMessageSeenBy = 0;
 	m_messageWindowSizeY = 50;
 	m_seenAllMessages = true;
+	m_showSearchField = false;
+	m_performedSearch = false;
+	m_hasDepressedEnter = true;
+	m_hasDepressedCtrlF = true;
+	m_sortEmojisByUsageFreq = true;
+	m_setInputFieldFocus = false;
+	m_showEmojiKeyboard = false;
+	m_input = aie::Input::getInstance();
 }
 
 
@@ -37,17 +43,62 @@ bool operator == (const std::pair<T1, T2> &left, const std::pair<T1, T2> &right)
 void ChatWindow::Draw()
 {
 	ImGui::Begin(m_windowName);
-
 	//just use client name
 	std::stringstream ss;
 	ss << "Client " << m_clientID;
-
+	if (m_setInputFieldFocus == true)
+	{
+		ImGui::SetKeyboardFocusHere(); //set focus to next widget
+		m_setInputFieldFocus = false;
+	}
 	ImGui::InputTextMultiline(m_clientName.c_str(), m_textInField, BUFFER_SIZE);
 	if (ImGui::Button("Send") && m_textInField[0] != 0)
 	{
 		SendText();
 		memset(m_textInField, 0, sizeof(m_textInField));
+		m_setInputFieldFocus = true;
 
+	}
+
+	ImGui::SameLine();
+	if (ImGui::Button("Emoji Keyboard"))
+	{
+		m_showEmojiKeyboard = !m_showEmojiKeyboard;
+	}
+
+
+	if (m_showEmojiKeyboard == true)
+	{
+		ImGui::BeginChild("Emoji Keyboard", ImVec2(160, 56));
+
+		for (int i = 0; i < m_textureIDs->size(); i++)
+		{
+			if (ImGui::ImageButton((*m_textureIDs)[i].first, ImVec2(16, 16), ImVec2(0, 0), ImVec2(1, 1), 0, ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
+			{
+				//add this to a file containing frequencies
+				std::ofstream freqFile;
+				freqFile.open("emojiFrequencyDatabase.txt", std::ios::app);
+
+				freqFile << '\n' << (*m_textureIDs)[i].second;
+				freqFile.close();
+
+				std::stringstream ss;
+				ss << "E#" << i << "#";
+
+				std::string emojiCode = ss.str();
+				int lenOfTextInField = strlen(m_textInField);
+				for (int ii = lenOfTextInField; ii < lenOfTextInField + emojiCode.length(); ii++)
+				{
+					//memset(m_textInField, 0, sizeof(m_textInField));
+					m_textInField[ii] = emojiCode[ii - lenOfTextInField];
+				}
+			}
+
+			if (i % 6 != 0 || i == 0)
+				ImGui::SameLine();
+		}
+
+		ImGui::EndChild();
 	}
 
 	//best spot?
@@ -66,12 +117,14 @@ void ChatWindow::Draw()
 	//clear positions every frame
 	m_hyperLinkPositions.clear();
 	m_hyperLinkPositionsStr.clear();
+	ImVec2 cursorPosAbsolute = ImGui::GetCursorPos(); //get cursor pos
 	//put all this in a child window
 	ImGui::BeginChild(m_windowName, ImVec2(0, m_messageWindowSizeY));
 
+
 	//probably easier: come up with a way to notify the user of an unread message. If they are scrolled to the top and a message comes along,
 	//a notification should come up
-
+	
 	int currentScrollPosY = ImGui::GetScrollY();
 	int maxScrollY = ImGui::GetScrollMaxY();
 
@@ -88,29 +141,69 @@ void ChatWindow::Draw()
 		}
 	}
 	//std::cout << m_seenAllMessages << std::endl;
-
+	
     for (int i = 0; i < m_messages.size(); i++)
 	{
-		std::vector<std::string> split = SplitByHyperlink(m_messages[i].c_str(), "https://", "http://");
+		//add to map
+		std::vector<std::string> split = SplitBy(m_messages[i].c_str(), "https://", "http://");
 
 		ImVec2 colPos = ImGui::GetCursorPos();
-
-		/*if (m_messages.size() >= 2)
+		float windowX = ImGui::GetWindowPos().x;
+		
+		//count number of lines
+		int noLines = 1;
+		int lengthOfCurrentLine = 0;
+		int lengthOfLongestLine = 0;
+		for (int c = 0; c < m_messages[i].length(); c++)
 		{
-			int x = 0;
+			lengthOfCurrentLine++;
+			if (m_messages[i][c] == '\n')
+			{
+				if (lengthOfCurrentLine > lengthOfLongestLine)
+				{
+					lengthOfLongestLine = lengthOfCurrentLine;
+				}
+				lengthOfCurrentLine = 0;
+				noLines++;
+			}
+		}
+		int lastInvisibleIndex = floor(ImGui::GetScrollY() / 17.0f) - 1; //could also use this for other optimizations (don't draw text that is out of view)
+		ImVec2 currentMessageSize = ImGui::CalcTextSize(m_messages[i].c_str());
+		ImRect currentMessageBB;
+
+		/*currentMessageBB.Min = ImVec2(windowX, cursorPosAbsolute.y + (13 * i) + (ImClamp(lastInvisibleIndex, 0, INT_MAX) * 13));
+		currentMessageBB.Max = ImVec2(windowX + currentMessageSize.x, cursorPosAbsolute.y + currentMessageSize.y + (13*i) + (ImClamp(lastInvisibleIndex, 0, INT_MAX) + 3));
+
+		ImVec2 currMousePos = ImGui::GetMousePos();
+
+		if (ImGui::IsMouseHoveringRect(currentMessageBB.Min, currentMessageBB.Max) && i > lastInvisibleIndex)
+		{
+			std::cout << "Hovered over " << i << std::endl;
+			ImGui::SetNextWindowPos(ImGui::GetMousePos());
+			ImGui::OpenPopup("Tooltip");
+			ImGui::BeginPopup("Tooltip");
+
+			ImGui::Text(" Popup!");
+
+			ImGui::EndPopup();
 		}*/
+
+
+		//height of this message will equal how many lines it is multiplied by how high a line is
+		//
 
 		for (int ii = 0; ii < split.size(); ii++)
 		{
 			if (split[ii].find("https://") != std::string::npos || split[ii].find("http://") != std::string::npos)
 			{
+				//REWRITE ALL OF THIS WITH IMRECT AND IMGUI::ISHOVERED
+
 				//find some way to track position of this hyperlink
 				ImGui::TextColored(ImVec4(0, 0, 0.933f, 1), split[ii].c_str());
 				ImVec2 rectMin = ImGui::GetItemRectMin();
 				ImVec2 rectMax = ImGui::GetItemRectMax();
 
 				std::pair<ImVec2, ImVec2> rectPair(rectMin, rectMax);
-
 				
 				//std::cout << split[ii] << ": " << rectMin.x << ", " << rectMin.y << " : " << rectMax.x << ", " << rectMax.y << std::endl;
 
@@ -151,13 +244,105 @@ void ChatWindow::Draw()
 					xPos += ImGui::CalcTextSize(c.c_str()).x;
 					//ImGui::SameLine(xPos);
 				}
-				ImGui::SetCursorPosX(xPos);
-
+				ImGui::SetCursorPosX(xPos);				
 			}
 
 			else
-			{
-				ImGui::Text(split[ii].c_str());
+			{	
+
+				//E#1#
+
+				int emojiIndex = split[ii].find("E#");
+				if (emojiIndex == std::string::npos) //MESSAGE DOES NOT CONTAIN EMOJIS
+				{
+					ImGui::Text(split[ii].c_str());
+					ImVec2 rectMin = ImGui::GetItemRectMin();
+					ImVec2 rectMax = ImGui::GetItemRectMax();
+
+					//currentMessageBB.Min = ImVec2(windowX, cursorPosAbsolute.y + ImGui::GetCursorPosY()+5);
+					//currentMessageBB.Max = ImVec2(windowX + currentMessageSize.x, cursorPosAbsolute.y + ImGui::GetCursorPosY() + currentMessageSize.y + 5);
+
+					currentMessageBB.Min = rectMin;
+					currentMessageBB.Max = rectMax;
+
+					//std::cout << currentMessageBB.Min.x << ", " << currentMessageBB.Max.x << std::endl;
+					//std::cout << currentMessageBB.Min.y << ", " << currentMessageBB.Max.y << std::endl;
+
+					ImVec2 currMousePos = ImGui::GetMousePos();
+					if (currMousePos.x > currentMessageBB.Min.x && currMousePos.x < currentMessageBB.Max.x 
+						&& currMousePos.y > currentMessageBB.Min.y && currMousePos.y < currentMessageBB.Max.y)
+					{		
+						//std::cout << "Hovered over " << i << std::endl;
+						ImGui::SetNextWindowPos(ImGui::GetMousePos());
+						ImGui::OpenPopup("Tooltip");
+						ImGui::BeginPopup("Tooltip");
+						ImGui::Text(m_messageTimestamps[i].c_str());
+
+						ImGui::EndPopup();
+					}
+				}
+				else  //MESSAGE CONTAINS EMOJIS
+				{
+					ImVec2 rectMin;
+					ImVec2 rectMax;
+
+					std::string currentTimestamp = m_messageTimestamps[i]; //get time stamp, could be needed later
+					int iterations = 0;
+					std::string current = split[ii];
+					while (emojiIndex != std::string::npos)
+					{
+						ImGui::Text(current.substr(0, emojiIndex).c_str());
+
+						if (iterations == 0)
+						{
+ 							rectMin = ImGui::GetItemRectMin();
+						}
+
+						rectMax.x += ImGui::GetItemRectMax().x - ImGui::GetItemRectMin().x;
+						rectMax.y = ImGui::GetItemRectMax().y;
+
+						ImGui::SameLine();
+
+						//cut off E#1# to 1#
+						std::string substr = current.substr(emojiIndex + 2, current.length());
+						int endHashIndex = substr.find("#");
+						std::string emojiIDStr = substr.substr(0, endHashIndex);
+						int emojiID = std::stoi(emojiIDStr);
+						if (emojiID < m_textureIDs->size())
+						{
+							ImGui::Image((*m_textureIDs)[emojiID].first, ImVec2(16,16));
+							rectMax.x += 16;
+							ImGui::SameLine();
+						}
+						int subStrStartIndex = endHashIndex /*+ emojiIDStr.length() + emojiIndex*/+1;
+						if (subStrStartIndex >= current.length())
+						{
+							break;
+						}
+						current = substr.substr(subStrStartIndex, split[ii].length());
+						emojiIndex = current.find("E#");
+						iterations++;
+					}
+					ImGui::Text(current.c_str());
+					rectMax.x += ImGui::GetItemRectMax().x - ImGui::GetItemRectMin().x;
+
+					//std::cout << currentMessageBB.Min.x << ", " << currentMessageBB.Max.x << std::endl;
+					//std::cout << currentMessageBB.Min.y << ", " << currentMessageBB.Max.y << std::endl;
+
+					ImVec2 currMousePos = ImGui::GetMousePos();
+					if (currMousePos.x > rectMin.x && currMousePos.x < rectMax.x
+						&& currMousePos.y > rectMin.y && currMousePos.y < rectMax.y)
+					{
+						//std::cout << "Hovered over " << i << std::endl;
+						ImGui::SetNextWindowPos(ImGui::GetMousePos());
+						ImGui::OpenPopup("Tooltip");
+						ImGui::BeginPopup("Tooltip");
+						ImGui::Text(currentTimestamp.c_str());
+
+						ImGui::EndPopup();
+					}
+				}
+
 			}
 
 			if (split[ii] != "\n")
@@ -184,7 +369,8 @@ void ChatWindow::Draw()
 
 	}
 	
-	//std::cout << "Max Scroll Y: " << ImGui::GetScrollMaxY() << ", Scroll X: " << ImGui::GetScrollY() << std::endl;
+	//check for hover over a message, and draw tooltip if it happens
+
 
 	//scroll increases by 17 each time we add a new message
 
@@ -193,13 +379,138 @@ void ChatWindow::Draw()
 
 	//if scroll position is 0, that means we can't see anything more than 17*lines ahead of us
 
+	if (m_input->isKeyDown(aie::INPUT_KEY_LEFT_CONTROL))
+	{
+		if (m_input->isKeyDown(aie::INPUT_KEY_F) && m_hasDepressedCtrlF == true)
+		{
+			//m_showSearchField = true;
+			m_hasDepressedCtrlF = false;
+			m_showSearchField = !m_showSearchField;
+		}
+	}
+
+	if (m_input->isKeyDown(aie::INPUT_KEY_F) == false)
+	{
+		m_hasDepressedCtrlF = true;
+	}
+
+	if (m_showSearchField == true && m_performedSearch == false)
+	{
+		//probably going to be a live search, no need for a submit button
+		//get text and run search. 
+		//find a way to memoize the search, we don't want to be re-searching for terms that we've already looked for
+		int scrollVal = -1;
+		//std::cout << ImGui::GetScrollY() << std::endl;
+		if (strlen(m_searchConversationField) != 0)
+		{
+			//create new messages list, split by newline
+			std::vector<std::string> messagesSplit;
+			for (int i = 0; i < m_messages.size(); i++)
+			{
+				std::string currentMsg = m_messages[i];
+				currentMsg = currentMsg.substr(m_messages[i].find(':') + 2);
+				size_t pos = currentMsg.find('\n');
+				while (pos != std::string::npos)
+				{
+					std::string subStr = currentMsg.substr(0, pos);
+					messagesSplit.push_back(subStr);
+					currentMsg = currentMsg.substr(pos + 1, currentMsg.length());
+					pos = currentMsg.find('\n');
+				}
+				messagesSplit.push_back(currentMsg);
+			}
+
+			//start from current scroll position, not used for now
+			int currentScrollPosY = ImGui::GetScrollY();
+			int startIndex = currentScrollPosY / 17;
+			//for (int i = 0; i < m_messages.size(); i++)
+			//{
+			//	std::string trimmed = m_messages[i].substr(m_messages[i].find(':') + 2, m_messages[i].length());
+			//	if (trimmed.find(m_searchConversationField) != std::string::npos)
+			//	{
+			//		scrollVal = i * 17;
+			//		//prevent this loop from executing unneccessarilyk
+			//		break;
+			//	}
+			//}
+			for (int i = 0; i < messagesSplit.size(); i++)
+			{
+				if (messagesSplit[i].find(m_searchConversationField) != std::string::npos)
+				{
+					scrollVal = i * 17;
+					break;
+				}
+			}
+
+			m_performedSearch = true;
+		}
+
+		if (scrollVal != -1)
+		{
+			ImGui::SetScrollY(scrollVal);
+		}
+	}
+
+	int scrollVal = -1;
+	if (m_input->isKeyDown(aie::INPUT_KEY_ENTER) == false)
+	{
+		m_hasDepressedEnter = true;
+	}
+
+	if (m_input->isKeyDown(aie::INPUT_KEY_ENTER) && m_showSearchField == true && strlen(m_searchConversationField) != 0 && m_hasDepressedEnter == true)
+	{
+		m_hasDepressedEnter = false;
+		int currentScrollPosY = ImGui::GetScrollY();
+		int startLine = currentScrollPosY / 17;
+		startLine++;
+		std::vector<std::string> messagesSplit;
+		for (int i = 0; i < m_messages.size(); i++)
+		{
+			std::string currentMsg = m_messages[i];
+			currentMsg = currentMsg.substr(m_messages[i].find(':') + 2);
+			size_t pos = currentMsg.find('\n');
+			while (pos != std::string::npos)
+			{
+				std::string subStr = currentMsg.substr(0, pos);
+				messagesSplit.push_back(subStr);
+				currentMsg = currentMsg.substr(pos + 1, currentMsg.length());
+				pos = currentMsg.find('\n');
+			}
+			messagesSplit.push_back(currentMsg);
+		}
+		for (int i = startLine; i < messagesSplit.size(); i++)
+		{
+			if (messagesSplit[i].find(m_searchConversationField) != std::string::npos)
+			{
+				scrollVal = i * 17;
+				break;	
+			}
+		}
+		if (scrollVal != -1)
+		{
+			ImGui::SetScrollY(scrollVal);
+		}
+	}
+
 	ImGui::EndChild();
 
-	ImGui::InputText("", m_textInInviteField, BUFFER_SIZE);
-	if (ImGui::Button("Send Invite"))
+	//ImGui::Checkbox("Search ", &m_showSearchField);
+	if (m_showSearchField == true)
 	{
-		SendChatInvite();
+		if (ImGui::InputText("Search", m_searchConversationField, BUFFER_SIZE)) //if modified
+		{
+			m_performedSearch = false;
+		}
+		
 	}
+
+
+	//COMMENTED OUT INVITE STUFF FOR NOW (NOT REALLY USED)
+	//ImGui::InputText("", m_textInInviteField, BUFFER_SIZE);
+	//if (ImGui::Button("Send Invite"))
+	//{
+	//	SendChatInvite();
+	//}
 
 	if (ImGui::IsMouseClicked(0))
 	{
@@ -280,6 +591,38 @@ int ChatWindow::GetChatID()
 void ChatWindow::AddMessage(std::string message)
 {
 	m_mostRecentMessageSeenBy = 0;
+	m_performedSearch = false;
+	ImGui::SetKeyboardFocusHere();
+	time_t t = time(0);   // get time now
+	struct tm * now = localtime(&t);
+	std::string timeString = " ";
+	int hour = now->tm_hour;
+	std::string hourStr;
+	std::string meridiem;
+	std::string minStr = std::to_string(now->tm_min);
+
+	if (minStr.size() == 1)
+	{
+		minStr = "0" + minStr;
+	}
+
+	if (hour >= 12)
+	{
+		hour -= 12;
+		hourStr = std::to_string(hour);
+		meridiem = "PM";
+	}
+
+	else
+	{
+		hourStr = std::to_string(hour);
+		meridiem = "AM";
+	}
+
+	timeString += hourStr + ":" + minStr + meridiem;
+	//message += timeString;
+
+	m_messageTimestamps[m_messages.size()] = timeString;
 
 	if (message.substr(0,5) != "(You)")
 		m_seenAllMessages = false;
@@ -297,7 +640,12 @@ void ChatWindow::AddChatRecipient(RakNet::SystemAddress address)
 	m_chatRecipients.push_back(address);
 }
 
-std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line, const char* splitBy)
+void ChatWindow::SetTextureIDs(std::vector<std::pair<ImTextureID, std::string>> *textureIDs)
+{
+	m_textureIDs = textureIDs;
+}
+
+std::vector<std::string> ChatWindow::SplitBy(const char * line, const char* splitBy)
 {
 	//if no hyperlinks, return 1 element vector with original line
 
@@ -338,7 +686,7 @@ std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line, const c
 	return lineSplit;
 }
 
-std::vector<std::string> ChatWindow::SplitByHyperlink(const char * line, const char* splitBy1, const char* splitBy2)
+std::vector<std::string> ChatWindow::SplitBy(const char * line, const char* splitBy1, const char* splitBy2)
 {
 	//if no hyperlinks, return 1 element vector with original line
 

@@ -5524,6 +5524,87 @@ bool ImGui::ButtonBehavior(const ImRect& bb, ImGuiID id, bool* out_hovered, bool
     return pressed;
 }
 
+IMGUI_API void ImGui::ModifyStyle(ImGuiCol index, const ImVec4 colour)
+{
+	ImGuiContext& g = *GImGui;
+	ImGuiStyle& style = g.Style;
+	//style.Colors[index].x = colour.x;
+	//style.Colors[index].y = colour.y;
+	//style.Colors[index].z = colour.z;
+	//style.Colors[index].w = colour.w;
+
+	ImVec4 buttonCol = style.Colors[ImGuiCol_Button];
+	ImVec4 hoveredCol = style.Colors[ImGuiCol_ButtonHovered];
+	ImVec4 activeCol = style.Colors[ImGuiCol_ButtonActive];
+
+	printf("%.6f", buttonCol.x);
+	printf(" ");
+	printf("%.6f", buttonCol.y);
+	printf(" ");
+	printf("%.6f", buttonCol.z);
+	printf(" ");
+	printf("%.6f", buttonCol.w);
+	printf("\n");
+
+	printf("%.6f", hoveredCol.x);
+	printf(" ");
+	printf("%.6f", hoveredCol.y);
+	printf(" ");
+	printf("%.6f", hoveredCol.z);
+	printf(" ");
+	printf("%.6f", hoveredCol.w);
+	printf("\n");
+
+	printf("%.6f", activeCol.x);
+	printf(" ");
+	printf("%.6f", activeCol.y);
+	printf(" ");
+	printf("%.6f", activeCol.z);
+	printf(" ");
+	printf("%.6f", activeCol.w);
+	printf("\n");
+
+	return IMGUI_API void();
+}
+
+bool ImGui::ButtonExColoured(const char* label, ImU32 buttonColour, ImU32 buttonHovered, ImU32 buttonActive, ImGuiButtonFlags flags, const ImVec2& size_arg)
+{
+	ImGuiWindow* window = GetCurrentWindow();
+	if (window->SkipItems)
+		return false;
+
+	ImGuiContext& g = *GImGui;
+	const ImGuiStyle& style = g.Style;
+	const ImGuiID id = window->GetID(label);
+	const ImVec2 label_size = CalcTextSize(label, NULL, true);
+
+	ImVec2 pos = window->DC.CursorPos;
+	if ((flags & ImGuiButtonFlags_AlignTextBaseLine) && style.FramePadding.y < window->DC.CurrentLineTextBaseOffset)
+		pos.y += window->DC.CurrentLineTextBaseOffset - style.FramePadding.y;
+	ImVec2 size = CalcItemSize(size_arg, label_size.x + style.FramePadding.x * 2.0f, label_size.y + style.FramePadding.y * 2.0f);
+
+	const ImRect bb(pos, pos + size);
+	ItemSize(bb, style.FramePadding.y);
+	if (!ItemAdd(bb, &id))
+		return false;
+
+	if (window->DC.ButtonRepeat) flags |= ImGuiButtonFlags_Repeat;
+	bool hovered, held;
+	bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
+
+	// Render
+	//GetColorU32((hovered && held) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
+	const ImU32 col = (hovered && held) ? buttonActive : hovered ? buttonHovered : buttonColour;
+	RenderFrame(bb.Min, bb.Max, col, true, style.FrameRounding);
+	RenderTextClipped(bb.Min, bb.Max, label, NULL, &label_size, ImGuiAlign_Center | ImGuiAlign_VCenter);
+
+	// Automatically close popups
+	//if (pressed && !(flags & ImGuiButtonFlags_DontClosePopups) && (window->Flags & ImGuiWindowFlags_Popup))
+	//    CloseCurrentPopup();
+
+	return pressed;
+}
+
 bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags flags)
 {
     ImGuiWindow* window = GetCurrentWindow();
@@ -5564,6 +5645,11 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
 bool ImGui::Button(const char* label, const ImVec2& size_arg)
 {
     return ButtonEx(label, size_arg, 0);
+}
+
+IMGUI_API bool ImGui::ButtonColoured(const char * label, ImU32 colour, ImU32 buttonHovered, ImU32 buttonActive, const ImVec2 & size)
+{
+	return ButtonExColoured(label, colour, buttonHovered, buttonActive, 0, size);
 }
 
 // Small buttons fits within text without additional vertical spacing.
@@ -5659,6 +5745,7 @@ bool ImGui::ImageButton(ImTextureID user_texture_id, const ImVec2& size, const I
 
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
+	
 
     // Default to using texture ID as ID. User can still push string/integer prefixes.
     // We could hash the size/uv to create a unique ID but that would prevent the user from animating UV.

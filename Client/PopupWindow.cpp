@@ -26,17 +26,6 @@ void PopupWindow::Draw()
 	ImGui::Begin(ss.str().c_str(), m_open, flags);
 	ImGui::TextColored(ImVec4(1,0,0,1), m_message.c_str());
 	ImGui::End();
-
-	/*if (ImGui::Begin(m_title.c_str(), m_open, flags) == false)
-	{
-		ImGui::End();
-	}
-	else
-	{
-		ImGui::Text(m_message.c_str());
-		ImGui::End();
-	}*/
-
 }
 
 bool PopupWindow::IsOpen()
