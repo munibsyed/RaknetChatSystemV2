@@ -5,12 +5,9 @@
 #include <fstream>
 #include <sstream>
 #include <thread>
-#include <deque>
 #include "..\bootstrap\imgui_glfw3.h"
 //#define STB_IMAGE_IMPLEMENTATION
 #include "..\dependencies\stb\stb_image.h"
-
-#define SPEED 5
 
 using glm::vec3;
 using glm::vec4;
@@ -67,7 +64,6 @@ Client::~Client() {
 
 bool Client::startup() {
 
-	m_processID = GetCurrentProcessId();
 	m_fileTransfer = new RakNet::FileListTransfer;
 	m_colourEditor = new ColorEditor;
 	m_openFileDialog = new OpenFileDialog;
@@ -169,7 +165,6 @@ bool Client::startup() {
 
 	HandleNetworkConnections();
 
-	counter = 0;
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 1", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 2", m_clientID, m_pPeerInterface));
 	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 3", m_clientID, m_pPeerInterface));
@@ -205,14 +200,8 @@ void Client::shutdown() {
 void Client::update(float deltaTime) {
 	//Listen for incoming message
 	HandleNetworkMessages(false);
-	counter++;
 	// query time since application started
 	float time = getTime();
-	
-	//if (counter % 1000 == 0)
-	//{
-	//	SendFileTest();
-	//}
 
 	// wipe the gizmos clean for this frame
 	Gizmos::clear();
@@ -220,33 +209,16 @@ void Client::update(float deltaTime) {
 	// quit if we press escape
 	aie::Input* input = aie::Input::getInstance();
 
-
-	//FIND A WAY TO ENCAPSULATE A WINDOW INTO A CLASS, AND DISPLAY ONE AT ANY GIVEN TIME
-	/*
-	What does a single chat window need to have/do?
-
-	//Functions
-	Hide/Show
-	Draw?
-
-
-	//Variables
-	Messages in this conversation
-
-	*/
-
 	/*tabs*/
 	ImGui::Begin("Chat");
 	
 	if (m_chatWindows.size() > 0)
 	{
-
 		ImGui::BeginTabBar("Chat List");
 		
 		for (int i = 0; i < m_chatWindows.size(); i++)
 		{
 			std::string name = m_chatWindows[i]->m_chatNameStr;
-		//	std::cout << name.c_str() << std::endl;
 			if (ImGui::AddTab("Chat")) //if active
 			{
 				m_chatWindows[i]->Draw();
@@ -279,8 +251,11 @@ void Client::update(float deltaTime) {
 	}
 
 	//SEND FILE
-	if (ImGui::ButtonColoured("Send File", ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonColour), ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonHoveredColour), ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonActiveColour))
-	&& m_isSendingFile == false)
+	if (ImGui::ButtonColoured("Send File", 
+		ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonColour), 
+		ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonHoveredColour), 
+		ImGui::ColorConvertFloat4ToU32(m_ImGuiButtonActiveColour))
+		&& m_isSendingFile == false)
 	{
 		m_isSendingFile = true;
 		//
@@ -291,7 +266,6 @@ void Client::update(float deltaTime) {
 		}
 
 		m_fileSendThreads.push_back(std::thread(&Client::SendFileTest, this));
-		//	SendFileTest();
 	}
 
 	ImGui::End();
@@ -599,7 +573,6 @@ void Client::HandleNetworkMessages(bool loop)
 
 				message = toParse;
 
-				m_recentMessages.push_back(message);
 				for (int i = 0; i < m_chatWindows.size(); i++)
 				{
 					//message will only be received by clients in the same chatID as sender

@@ -9,8 +9,8 @@ ChatWindow::ChatWindow(const char* windowName, int clientID, std::string clientN
 	m_windowCount++;
 	ss << "Chat " << m_windowCount;
 	m_chatNameStr = ss.str();
-	m_mostRecentMessageSeenBy = 0;
 	m_messageWindowSizeY = 50;
+	m_scrollIncrement = 17;
 	m_seenAllMessages = true;
 	m_showSearchField = false;
 	m_performedSearch = false;
@@ -73,7 +73,7 @@ void ChatWindow::Draw()
 
 		for (int i = 0; i < m_textureIDs->size(); i++)
 		{
-			if (ImGui::ImageButton((*m_textureIDs)[i].first, ImVec2(16, 16), ImVec2(0, 0), ImVec2(1, 1), 0, ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
+			if (ImGui::ImageButton((*m_textureIDs)[i].first, ImVec2(16, 16), ImVec2(0, 0), ImVec2(1, 1), 0, ImVec4(0.21f, 0.21f, 0.21f, 1), ImVec4(1, 1, 1, 1)))
 			{
 				//add this to a file containing frequencies
 				std::ofstream freqFile;
@@ -167,7 +167,7 @@ void ChatWindow::Draw()
 				noLines++;
 			}
 		}
-		int lastInvisibleIndex = floor(ImGui::GetScrollY() / 17.0f) - 1; //could also use this for other optimizations (don't draw text that is out of view)
+		int lastInvisibleIndex = floor(ImGui::GetScrollY() / (float)m_scrollIncrement) - 1; //could also use this for other optimizations (don't draw text that is out of view)
 		ImVec2 currentMessageSize = ImGui::CalcTextSize(m_messages[i].c_str());
 		ImRect currentMessageBB;
 
@@ -314,7 +314,7 @@ void ChatWindow::Draw()
 							rectMax.x += 16;
 							ImGui::SameLine();
 						}
-						int subStrStartIndex = endHashIndex /*+ emojiIDStr.length() + emojiIndex*/+1;
+						int subStrStartIndex = endHashIndex + 1;
 						if (subStrStartIndex >= current.length())
 						{
 							break;
@@ -372,10 +372,10 @@ void ChatWindow::Draw()
 	//check for hover over a message, and draw tooltip if it happens
 
 
-	//scroll increases by 17 each time we add a new message
 
 	//calculate how many lines of text can fit in our window without scrolling
 	//this would be m_messageWindowSizeY / ImGui::GetTextSize().y
+	//scroll increases by 17 each time we add a new message
 
 	//if scroll position is 0, that means we can't see anything more than 17*lines ahead of us
 
@@ -422,22 +422,13 @@ void ChatWindow::Draw()
 
 			//start from current scroll position, not used for now
 			int currentScrollPosY = ImGui::GetScrollY();
-			int startIndex = currentScrollPosY / 17;
-			//for (int i = 0; i < m_messages.size(); i++)
-			//{
-			//	std::string trimmed = m_messages[i].substr(m_messages[i].find(':') + 2, m_messages[i].length());
-			//	if (trimmed.find(m_searchConversationField) != std::string::npos)
-			//	{
-			//		scrollVal = i * 17;
-			//		//prevent this loop from executing unneccessarilyk
-			//		break;
-			//	}
-			//}
+			int startIndex = currentScrollPosY / m_scrollIncrement;
+	
 			for (int i = 0; i < messagesSplit.size(); i++)
 			{
 				if (messagesSplit[i].find(m_searchConversationField) != std::string::npos)
 				{
-					scrollVal = i * 17;
+					scrollVal = i * m_scrollIncrement;
 					break;
 				}
 			}
@@ -461,7 +452,7 @@ void ChatWindow::Draw()
 	{
 		m_hasDepressedEnter = false;
 		int currentScrollPosY = ImGui::GetScrollY();
-		int startLine = currentScrollPosY / 17;
+		int startLine = currentScrollPosY / m_scrollIncrement;
 		startLine++;
 		std::vector<std::string> messagesSplit;
 		for (int i = 0; i < m_messages.size(); i++)
@@ -482,7 +473,7 @@ void ChatWindow::Draw()
 		{
 			if (messagesSplit[i].find(m_searchConversationField) != std::string::npos)
 			{
-				scrollVal = i * 17;
+				scrollVal = i * m_scrollIncrement;
 				break;	
 			}
 		}
@@ -590,10 +581,9 @@ int ChatWindow::GetChatID()
 
 void ChatWindow::AddMessage(std::string message)
 {
-	m_mostRecentMessageSeenBy = 0;
 	m_performedSearch = false;
 	ImGui::SetKeyboardFocusHere();
-	time_t t = time(0);   // get time now
+	time_t t = time(0); 
 	struct tm * now = localtime(&t);
 	std::string timeString = " ";
 	int hour = now->tm_hour;
