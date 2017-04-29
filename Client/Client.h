@@ -43,8 +43,6 @@ public:
 
 	void SendFileReceiveID(int id);
 
-	//void SendChatID();
-
 	void CreateNewChatRequest();
 
 	void DisplayHighScoresRequest();
@@ -64,20 +62,23 @@ protected:
 	const unsigned short PORT = 5456;
 	
 	char textInField[BUFFER_SIZE] = "Enter text";
-	std::vector<std::string> m_recentMessages;
 	
+	//for stress testing
 	int m_sendPacketInterval;
 	int m_sendPacketCounter;
+
+	//for file transfer
 	int m_receiveFileID;
 	int m_sendFileID;
+
+	//for rendering of 3D scene
 	glm::mat4	m_viewMatrix;
 	glm::mat4	m_projectionMatrix;
-	DWORD m_processID;
+
 	unsigned int m_clientID;
 	std::string m_clientName;
 	RakNet::SystemAddress serverAddress;
 
-	//ChatWindow *m_chatWindow;
 	
 	std::vector<ChatWindow*> m_chatWindows;
 	std::vector<PopupWindow*> m_popupWindows;
@@ -92,9 +93,11 @@ protected:
 
 	//Threads
 	std::vector<std::thread> m_fileSendThreads;
+
+	//For the file send button
 	ImVec4 m_ImGuiButtonColour;
 	ImVec4 m_ImGuiButtonHoveredColour;
 	ImVec4 m_ImGuiButtonActiveColour;
+
 	bool m_isSendingFile; //is the Send File function still in progress?
-	int counter = 0;
 };

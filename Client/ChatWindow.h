@@ -70,6 +70,8 @@ private:
 	const char* m_chatName; //individual chat name, like Chat 1 or Friends
 	int m_clientID;
 	int m_chatID;
+
+	int m_scrollIncrement;
 	
 	int m_messageWindowSizeY; //most messages in a line before you have to scroll
 	bool m_seenAllMessages;
@@ -88,7 +90,6 @@ private:
 	std::vector<std::pair<ImTextureID, std::string>> * m_textureIDs;
 
 	RakNet::RakPeerInterface *m_peerInterface;
-	int m_mostRecentMessageSeenBy;
 
 	aie::Input *m_input;
 };
