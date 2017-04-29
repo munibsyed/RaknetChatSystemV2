@@ -19,6 +19,7 @@ enum Messages
 	ID_CHAT_MESSAGE_WITH_ADDRESS,
 	ID_SERVER_SET_CLIENT_ID,
 	ID_SERVER_SET_FILE_SEND_ID,
+	ID_CLIENT_SET_FILE_SEND_ID,
 	ID_CLIENT_CLIENT_DATA,
 	ID_DISCONNECTED_CLIENT_ID,
 	ID_DISPLAY_HIGH_SCORES_REQUEST,
@@ -58,6 +59,8 @@ public:
 
 protected:
 
+	void SendFile(RakNet::FileList *fList, std::string id);
+
 	void SendFileSendID(int fileSendID);
 
 	void SendFileSendID(int fileSendID, RakNet::SystemAddress &address);
@@ -75,7 +78,9 @@ private:
 	unsigned int m_maxClients;
 	RakNet::RakPeerInterface *m_peerInterface;
 	RakNet::FileListTransfer *m_fileListTransfer;
+	std::vector<RakNet::FileListTransfer*> m_fileListTransferList;
 	CallbackInterface *m_callbackInterface;
+	CallbackInterface *m_callbackInterface2;
 
 	int m_nextChatID;
 	int m_nextClientID;
@@ -85,5 +90,6 @@ private:
 
 	std::map<int, std::vector<RakNet::SystemAddress>> m_chatIDToClientAddresses;
 	std::map<std::string, RakNet::SystemAddress> m_clientNameToAddress;
+	std::map<std::string, int> m_clientNameToSendID;
 };
 

@@ -5,7 +5,6 @@
 #include <string>
 #include <fstream>
 
-class ChatServer; //circular headers
 
 class CallbackInterface : public RakNet::FileListTransferCBInterface
 {
@@ -16,6 +15,10 @@ public:
 
 	void OnFileProgress(FileProgressStruct *fps);
 
+	RakNet::FileList* GetFileList();
+
 private:
+	std::string m_receivedFileData;
+	std::string m_receivedFilePath;
 };
 

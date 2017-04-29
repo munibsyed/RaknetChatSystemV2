@@ -2,6 +2,7 @@
 #include <FileListTransferCBInterface.h>
 #include <string>
 #include <fstream>
+#include <iostream>
 
 class CallbackInterfaceClient : public RakNet::FileListTransferCBInterface
 {

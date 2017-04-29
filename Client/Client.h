@@ -20,6 +20,8 @@
 #include "ColorEditor.h"
 #include "OpenFileDialog.h"
 #include "CallbackInterfaceClient.h"
+#include "..\bootstrap\Texture.h"
+
 
 class Client : public aie::Application {
 public:
@@ -39,7 +41,7 @@ public:
 
 	void SendFileTest();
 
-	void SendScore();
+	void SendFileReceiveID(int id);
 
 	//void SendChatID();
 
@@ -80,9 +82,19 @@ protected:
 	std::vector<ChatWindow*> m_chatWindows;
 	std::vector<PopupWindow*> m_popupWindows;
 
+	std::vector<aie::Texture*> m_textures;
+	std::vector<std::pair<ImTextureID, std::string>> m_textureIDs;
+
 	OpenFileDialog *m_openFileDialog;
 	ColorEditor *m_colourEditor;
-
+	CallbackInterfaceClient *m_callbackInterface;
 	//File receiving stuff
 
+	//Threads
+	std::vector<std::thread> m_fileSendThreads;
+	ImVec4 m_ImGuiButtonColour;
+	ImVec4 m_ImGuiButtonHoveredColour;
+	ImVec4 m_ImGuiButtonActiveColour;
+	bool m_isSendingFile; //is the Send File function still in progress?
+	int counter = 0;
 };
