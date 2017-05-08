@@ -87,8 +87,6 @@ private:
 	std::stringstream ss;
 	std::string m_clientName;
 
-	ImVec4 m_secondTextColour;
-
 	std::vector<std::pair<ImTextureID, std::string>> * m_textureIDs;
 
 	RakNet::RakPeerInterface *m_peerInterface;

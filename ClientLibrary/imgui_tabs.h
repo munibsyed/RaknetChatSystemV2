@@ -99,7 +99,7 @@ static inline ImVec4& operator/=(ImVec4& lhs, const ImVec4& rhs)            { lh
 
 namespace ImGui
 {
-	/// User Colors & Style Extensions
+    /// User Colors & Style Extensions
     enum ImGuiUserCol_ {
         ImGuiUserCol_TabBorder = 0,
         ImGuiUserCol_TabBorderShadow,

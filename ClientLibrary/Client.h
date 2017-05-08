@@ -17,8 +17,6 @@
 #include <thread>
 #include <map>
 #include <sstream>
-#include <mutex>
-#include <stack>
 #include "ColorEditor.h"
 #include "OpenFileDialog.h"
 #include "CallbackInterfaceClient.h"
@@ -37,10 +35,6 @@ public:
 	virtual void update(float deltaTime);
 	virtual void draw();
 	
-	void LoadEmojis();
-
-	void LoadTexture(std::string textureName);
-
 	void OnSetClientIDPacket(RakNet::Packet * packet);
 
 	void OnDisconnectionSendPacket();
@@ -61,10 +55,7 @@ public:
 
 	int ParseIDNumber(const char * str);
 
-	std::vector<std::string> SplitIntoMessages(std::string str);
-
 protected:
-
 	RakNet::RakPeerInterface *m_pPeerInterface;
 	RakNet::FileListTransfer *m_fileTransfer;
 	const char* IP = "127.0.0.1" /*"122.99.85.44"*/;
@@ -88,8 +79,6 @@ protected:
 	std::string m_clientName;
 	RakNet::SystemAddress serverAddress;
 
-	bool m_isStandalone;
-
 	
 	std::vector<ChatWindow*> m_chatWindows;
 	std::vector<PopupWindow*> m_popupWindows;
@@ -104,8 +93,6 @@ protected:
 
 	//Threads
 	std::vector<std::thread> m_fileSendThreads;
-	std::vector<std::thread> m_textureLoadThreads;
-	std::mutex m_textureVectorMutex;
 
 	//For the file send button
 	ImVec4 m_ImGuiButtonColour;

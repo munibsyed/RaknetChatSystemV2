@@ -11,6 +11,7 @@
 #include <vector>
 #include <sstream>
 #include <exception>
+#include <fstream>
 
 enum Messages
 {
@@ -30,7 +31,8 @@ enum Messages
 	ID_SEND_INVITED_CLIENT_ADDRESS,
 	ID_SEND_INVITED_CLIENT_ADDRESS_FAIL,
 	ID_FILE_DATA,
-	ID_REINITIALIZE_FILE_HANDLERS
+	ID_REINITIALIZE_FILE_HANDLERS,
+	ID_SEND_CONVERSATION_LOG
 
 };
 
@@ -50,7 +52,7 @@ There will probably far less broadcasting and more sending packets from the serv
 class ChatServer
 {
 public:
-	ChatServer(const unsigned short port, unsigned int maxClients);
+	ChatServer(const unsigned short port, unsigned int maxClients, bool persistentData);
 	~ChatServer();
 
 	void Update();
@@ -87,6 +89,8 @@ private:
 	int m_fileSendID;
 	bool m_runUpdateLoop;
 	bool m_sendChatMsgBackToSender;
+
+	bool m_persistentData;
 
 	std::map<int, std::vector<RakNet::SystemAddress>> m_chatIDToClientAddresses;
 	std::map<std::string, RakNet::SystemAddress> m_clientNameToAddress;
