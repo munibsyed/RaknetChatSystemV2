@@ -43,7 +43,6 @@ bool operator == (const std::pair<T1, T2> &left, const std::pair<T1, T2> &right)
 void ChatWindow::Draw()
 {
 	ImGui::Begin(m_windowName);
-
 	//just use client name
 	std::stringstream ss;
 	ss << "Client " << m_clientID;
@@ -145,17 +144,6 @@ void ChatWindow::Draw()
 	
     for (int i = 0; i < m_messages.size(); i++)
 	{
-		//pop special colour for even messages
-	/*	if (i % 2 == 0)
-		{
-			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.90f, 0.90f, 1.00f));
-		}
-
-		else
-		{
-			ImGui::PushStyleColor(ImGuiCol_Text, m_secondTextColour);
-		}
-*/
 		//add to map
 		std::vector<std::string> split = SplitBy(m_messages[i].c_str(), "https://", "http://");
 
@@ -182,6 +170,24 @@ void ChatWindow::Draw()
 		int lastInvisibleIndex = floor(ImGui::GetScrollY() / (float)m_scrollIncrement) - 1; //could also use this for other optimizations (don't draw text that is out of view)
 		ImVec2 currentMessageSize = ImGui::CalcTextSize(m_messages[i].c_str());
 		ImRect currentMessageBB;
+
+		/*currentMessageBB.Min = ImVec2(windowX, cursorPosAbsolute.y + (13 * i) + (ImClamp(lastInvisibleIndex, 0, INT_MAX) * 13));
+		currentMessageBB.Max = ImVec2(windowX + currentMessageSize.x, cursorPosAbsolute.y + currentMessageSize.y + (13*i) + (ImClamp(lastInvisibleIndex, 0, INT_MAX) + 3));
+
+		ImVec2 currMousePos = ImGui::GetMousePos();
+
+		if (ImGui::IsMouseHoveringRect(currentMessageBB.Min, currentMessageBB.Max) && i > lastInvisibleIndex)
+		{
+			std::cout << "Hovered over " << i << std::endl;
+			ImGui::SetNextWindowPos(ImGui::GetMousePos());
+			ImGui::OpenPopup("Tooltip");
+			ImGui::BeginPopup("Tooltip");
+
+			ImGui::Text(" Popup!");
+
+			ImGui::EndPopup();
+		}*/
+
 
 		//height of this message will equal how many lines it is multiplied by how high a line is
 		//
@@ -210,6 +216,11 @@ void ChatWindow::Draw()
 				ss << rectMin.x << "," << rectMin.y << ":" << rectMax.x << "," << rectMax.y;
 				m_hyperLinkPositionsStr[ss.str()] = split[ii];
 
+				//if (i == split.size())
+				/*if (i == m_messages.size() - 1)
+					std::cout << rectMax.x << " " << rectMax.y << std::endl;*/
+
+				//ImGui::TextColored(ImVec4(0.2f, 0.4f, 0.733f, 1), split[i].c_str());
 			}
 
 			else if (split[ii] == "\n")
@@ -238,6 +249,7 @@ void ChatWindow::Draw()
 
 			else
 			{	
+
 				//E#1#
 
 				int emojiIndex = split[ii].find("E#");
@@ -352,6 +364,9 @@ void ChatWindow::Draw()
 				//ImGui::TextDisabled("Seen by all");
 			}
 		}
+
+		//if there isn't already a new line
+
 	}
 	
 	//check for hover over a message, and draw tooltip if it happens
@@ -567,7 +582,7 @@ int ChatWindow::GetChatID()
 void ChatWindow::AddMessage(std::string message)
 {
 	m_performedSearch = false;
-	//ImGui::SetKeyboardFocusHere();
+	ImGui::SetKeyboardFocusHere();
 	time_t t = time(0); 
 	struct tm * now = localtime(&t);
 	std::string timeString = " ";

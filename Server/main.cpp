@@ -1,9 +1,24 @@
 #include <iostream>
 #include "ChatServer.h"
+#include <iostream>
+#include <string>
+#include <vector>
 
-int main()
+
+
+
+int main(int argc, char	**argv)
 {
-	ChatServer *server = new ChatServer(5456, 32);
+	bool persistentData = false;
+	if (argc > 1)
+	{
+		if (strcmp(argv[1], "-persistent") == 0)
+		{
+			persistentData = true;
+		}
+	}
+
+	ChatServer *server = new ChatServer(5456, 32, persistentData);
 	server->Update();
 
 	delete server;

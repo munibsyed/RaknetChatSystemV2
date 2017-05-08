@@ -1,9 +1,14 @@
 #include "ChatServer.h"
+#include <sys/stat.h>
 
+inline bool FileExists(const std::string& name) {
+	struct stat buffer;
+	return (stat(name.c_str(), &buffer) == 0);
+}
 
-
-ChatServer::ChatServer(const unsigned short port, unsigned int maxClients) : PORT(port), m_maxClients(maxClients)
+ChatServer::ChatServer(const unsigned short port, unsigned int maxClients, bool persistentData) : PORT(port), m_maxClients(maxClients)
 {
+	m_persistentData = persistentData;
 	//start up the server and start listening to clients
 	std::cout << "Starting up server..." << std::endl;
 	m_peerInterface = RakNet::RakPeerInterface::GetInstance();
@@ -62,11 +67,6 @@ void ChatServer::Update()
 				{
 					std::cout << "A connection is incoming." << std::endl;
 
-					//FILE TRANSFER SETUP YET TO BE ADDED
-
-					//setup for file receive
-					//testCB = new TestCB;
-					//fileSendID = fileReceiver->SetupReceive(testCB, true, packet->systemAddress);
 					SendNewClientID(packet->systemAddress);
 					
 					if (m_fileSendID == -1) //if this is the first connection
@@ -82,6 +82,49 @@ void ChatServer::Update()
 						SendFileSendID(fileSendID, packet->systemAddress);
 					}
 					
+					//if conversation log exists, send a copy to client
+					if (m_persistentData == true)
+					{
+						//get data
+						int i = 0;
+						std::string savedConversation;
+						std::ifstream conversationLog;
+						std::stringstream filename;
+						filename << "conversationLog" << i << ".txt";
+						conversationLog.open(filename.str(), std::ios_base::app);
+						while (FileExists(filename.str()) == true)
+						{									
+							while (conversationLog.eof() == false)
+							{
+								std::string line;
+								std::getline(conversationLog, line);
+								savedConversation += line + '\n';
+							}
+
+							RakNet::BitStream bsOut;
+							bsOut.Write((unsigned char)ID_SEND_CONVERSATION_LOG);
+							bsOut.Write(i);
+							RakNet::RakString str;
+							str = savedConversation.c_str();
+							bsOut.Write(str);
+							if (str.GetLength() > 1)
+								m_peerInterface->Send(&bsOut, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
+							conversationLog.close();
+							i++;
+							savedConversation = "";
+							filename.str("");
+							filename.clear();
+							filename << "conversationLog" << i << ".txt";
+							if (FileExists(filename.str()) == false)
+							{
+								break;
+							}
+							conversationLog.open(filename.str(), std::ios_base::app);
+
+							
+						}
+					}
+
 
 					//add to map
 					std::stringstream ss;
@@ -371,32 +414,33 @@ void ChatServer::ReceiveAndSendChatMessage(RakNet::Packet * packet)
 	//parse chat ID number
 	std::string toParse = str.C_String();
 	std::string idNumAsStr = "";
-	for (int i = toParse.length() - 1; i >= 0; i--)
-	{
-		if (toParse[i] == '[')
-		{
-			//toParse = toParse.substr(0, i);
-			break;
-		}
+	idNumAsStr = toParse.substr(toParse.find_last_of('[')+1, toParse.length());
 
-		else
-		{
-			idNumAsStr += toParse[i];
-		}
-	}
-
-	//we have the chat ID, we aren't doing anything with it yet
-	std::reverse(idNumAsStr.begin(), idNumAsStr.end());
 	int idNum = std::stoi(idNumAsStr);
 	if (m_chatIDToClientAddresses.count(idNum) == 0)
 		m_chatIDToClientAddresses[idNum].push_back(packet->systemAddress);
 
-	//str = toParse.c_str();
 
 	//send message back to all clients
 	RakNet::BitStream bsOut;
 	bsOut.Write((unsigned char)Messages::ID_CHAT_MESSAGE);
 	bsOut.Write(str);
+	std::stringstream filename;
+	filename << "conversationLog";
+	filename << idNum << ".txt";
+	//add message to file if persistent
+	if (m_persistentData == true)
+	{
+		std::string stdStr = str.C_String();
+		int lastBraceIndex = stdStr.find_last_of('['); //USE THIS LINE OF CODE IN OTHER PLACES
+
+		stdStr = stdStr.substr(0, lastBraceIndex);
+
+		std::ofstream conversationLog;
+		conversationLog.open(filename.str().c_str(), std::ios_base::app);
+		conversationLog << stdStr << '\n';
+		conversationLog.close();
+	}
 
 	if (m_sendChatMsgBackToSender == true)
 	{

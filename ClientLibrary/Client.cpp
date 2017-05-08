@@ -56,6 +56,7 @@ std::vector<std::string> SplitByHyperlink(const char* line)
 }
 
 Client::Client() {
+
 }
 
 Client::~Client() {
@@ -73,7 +74,81 @@ bool Client::startup() {
 	setBackgroundColour(0.25f, 0.25f, 0.25f);
 	m_sendFileID = -1;
 
-	LoadEmojis();
+	std::ifstream freqDatabase;
+	freqDatabase.open("emojiFrequencyDatabase.txt");
+	std::vector<std::string> allLines;
+	std::map<std::string, int> emojiNamesWithFrequencies;
+	if (freqDatabase.is_open())
+	{
+		while (freqDatabase.eof() == false)
+		{
+			std::string line;
+			std::getline(freqDatabase, line);
+			allLines.push_back(line);
+
+			if (line != "" && line != "\n")
+			{
+				if (emojiNamesWithFrequencies.count(line) == 0)
+				{
+					emojiNamesWithFrequencies[line] = 1;
+				}
+
+				else
+				{
+					emojiNamesWithFrequencies[line] += 1;
+				}
+			}
+		}
+	}
+
+	std::vector<std::pair<int, std::string>> emojiFrequenciesWithNamesVector;
+	for (std::map <std::string, int> ::iterator it = emojiNamesWithFrequencies.begin(); it != emojiNamesWithFrequencies.end(); it++)
+	{
+		emojiFrequenciesWithNamesVector.push_back(std::make_pair((*it).second, (*it).first));
+	}
+
+	std::sort(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
+	std::reverse(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
+	for (int i = 0; i < emojiFrequenciesWithNamesVector.size(); i++)
+	{
+		std::stringstream ss;
+		ss << "160x160\\" << emojiFrequenciesWithNamesVector[i].second << ".png";
+		aie::Texture* texture = new aie::Texture(emojiFrequenciesWithNamesVector[i].second.c_str());
+
+		m_textures.push_back(texture);
+		m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), emojiFrequenciesWithNamesVector[i].second));
+	}
+
+	for (int i = 1; i <= 846; i++)
+	{
+		std::stringstream ss;
+		ss << "160x160\\" << i << ".png";
+		bool hasNotBeenAddedAlready = true;
+		for (int ii = 0; ii < emojiFrequenciesWithNamesVector.size(); ii++)
+		{	
+			if (ss.str() == emojiFrequenciesWithNamesVector[ii].second)
+			{
+				hasNotBeenAddedAlready = false;
+			}
+		}
+
+		if (hasNotBeenAddedAlready == true)
+		{
+			aie::Texture* texture = new aie::Texture(ss.str().c_str());
+		
+			m_textures.push_back(texture);
+			m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), ss.str()));
+		}
+	}
+
+	//figure out how to write a sorting key function
+	
+	//(5,3,2)
+	//(1,2,3,4,5)
+	//5,3,2,1,4
+	
+
+	//ImGui::ModifyStyle(1, ImVec4(1, 1, 1, 1));
 
 	m_ImGuiButtonColour = ImVec4(0.67f, 0.4f, 0.4f, 0.6f);
 	m_ImGuiButtonHoveredColour = ImVec4(0.67f, 0.4f, 0.4f, 1.0f);
@@ -90,6 +165,9 @@ bool Client::startup() {
 
 	HandleNetworkConnections();
 
+	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 1", m_clientID, m_pPeerInterface));
+	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 2", m_clientID, m_pPeerInterface));
+	//m_chatWindows.push_back(new ChatWindow("Chat", "Chat 3", m_clientID, m_pPeerInterface));
 	return true;
 }
 
@@ -115,7 +193,7 @@ void Client::shutdown() {
 	}
 
 	Gizmos::destroy();
-//	delete m_callbackInterface;
+	delete m_callbackInterface;
 }
 
 
@@ -234,87 +312,6 @@ void Client::draw() {
 
 	Gizmos::draw(m_projectionMatrix * m_viewMatrix);
 
-}
-
-void Client::LoadEmojis()
-{
-	std::ifstream freqDatabase;
-
-	freqDatabase.open("emojiFrequencyDatabase.txt");
-	std::vector<std::string> allLines;
-	std::map<std::string, int> emojiNamesWithFrequencies;
-
-	if (freqDatabase.is_open())
-	{
-		while (freqDatabase.eof() == false)
-		{
-			std::string line;
-			std::getline(freqDatabase, line);
-			allLines.push_back(line);
-
-			if (line != "" && line != "\n")
-			{
-				if (emojiNamesWithFrequencies.count(line) == 0)
-				{
-					emojiNamesWithFrequencies[line] = 1;
-				}
-
-				else
-				{
-					emojiNamesWithFrequencies[line] += 1;
-				}
-			}
-		}
-	}
-
-	std::vector<std::pair<int, std::string>> emojiFrequenciesWithNamesVector;
-	for (std::map <std::string, int> ::iterator it = emojiNamesWithFrequencies.begin(); it != emojiNamesWithFrequencies.end(); it++)
-	{
-		emojiFrequenciesWithNamesVector.push_back(std::make_pair((*it).second, (*it).first));
-	}
-
-	std::sort(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
-	std::reverse(emojiFrequenciesWithNamesVector.begin(), emojiFrequenciesWithNamesVector.end());
-	for (int i = 0; i < emojiFrequenciesWithNamesVector.size(); i++)
-	{
-		std::stringstream ss;
-		ss << "160x160\\" << emojiFrequenciesWithNamesVector[i].second << ".png";
-		aie::Texture* texture = new aie::Texture(emojiFrequenciesWithNamesVector[i].second.c_str());
-
-		m_textures.push_back(texture);
-		m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), emojiFrequenciesWithNamesVector[i].second));
-	}
-
-	//THREADS TO LOAD TEXTURES (note, if this works then textures will not be loaded in the right order)
-	std::stack<std::string> mainThreadStack;
-	std::stack<std::string> helperThreadStack;
-
-	for (int i = 1; i <= 846; i++)
-	{
-		std::stringstream ss;
-		ss << "160x160\\" << i << ".png";
-		bool hasNotBeenAddedAlready = true;
-		for (int ii = 0; ii < emojiFrequenciesWithNamesVector.size(); ii++)
-		{
-			if (ss.str() == emojiFrequenciesWithNamesVector[ii].second)
-			{
-				hasNotBeenAddedAlready = false;
-			}	
-		}
-
-		if (hasNotBeenAddedAlready == true)
-		{
-			LoadTexture(ss.str());
-		}
-	}
-	
-}
-
-void Client::LoadTexture(std::string textureName)
-{
-	aie::Texture* texture = new aie::Texture(textureName.c_str());
-	m_textures.push_back(texture);
-	m_textureIDs.push_back(std::make_pair((void*)texture->getHandle(), textureName));
 }
 
 //when server sends back a packet containing client ID
@@ -556,11 +553,22 @@ void Client::HandleNetworkMessages(bool loop)
 				//parse chat ID number
 				std::string toParse = message;
 				std::string idNumAsStr = "";
-				int endingBracePosition = toParse.find_last_of('[');
-				idNumAsStr = toParse.substr(endingBracePosition + 1, toParse.length());
-				toParse = toParse.substr(0, endingBracePosition);
+				for (int i = toParse.length() - 1; i >= 0; i--)
+				{
+					if (toParse[i] == '[')
+					{
+						toParse = toParse.substr(0, i);
+						break;
+					}
+
+					else
+					{
+						idNumAsStr += toParse[i];
+					}
+				}
 
 				//we have the chat ID, we aren't doing anything with it yet
+				std::reverse(idNumAsStr.begin(), idNumAsStr.end());
 				int idNum = std::stoi(idNumAsStr);
 
 				message = toParse;
@@ -703,63 +711,6 @@ void Client::HandleNetworkMessages(bool loop)
 				break;
 			}
 
-			case ID_SEND_CONVERSATION_LOG:
-			{
-				m_isStandalone = true;
-
-				RakNet::BitStream bsIn(packet->data, packet->length, false);
-				bsIn.IgnoreBytes(sizeof(unsigned char));
-				int conversationID;
-				bsIn.Read(conversationID);
-				RakNet::RakString str;
-				bsIn.Read(str);
-				std::string conversationLog = str;
-				int index = conversationLog.find('\n');
-
-				ChatWindow* window = new ChatWindow("Chat", m_clientID, m_clientName, m_pPeerInterface);
-				window->SetChatID(conversationID);
-				window->SetTextureIDs(&m_textureIDs);
-				/*while (index != std::string::npos)
-				{
-					std::string message = conversationLog.substr(0, index);
-					if (message != "\n")
-					{
-						int id = ParseIDNumber(message.c_str());
-						if (id == m_clientID)
-						{
-							std::string substr = message.substr(message.find(':')+1, message.length());
-							std::string start = "(You) :" + substr;
-							message = start;
-						}
-					}
-
-					
-					window->AddMessage(message);
-					index = conversationLog.find('\n');
-					conversationLog = conversationLog.substr(index + 1, conversationLog.length());
-				}*/
-				std::vector<std::string> splitIntoMessages = SplitIntoMessages(conversationLog);
-				for (int i = 0; i < splitIntoMessages.size(); i++)
-				{
-					if (splitIntoMessages[i] != "\n")
-					{						
-						int id = ParseIDNumber(splitIntoMessages[i].c_str());
-						if (id == m_clientID)
-						{
-							std::string substr = splitIntoMessages[i].substr(splitIntoMessages[i].find(':') + 1, splitIntoMessages[i].length());
-							std::string start = "(You) :" + substr;
-							splitIntoMessages[i] = start;
-						}
-						
-						window->AddMessage(splitIntoMessages[i]);
-					}
-				}
-
-				m_chatWindows.push_back(window);
-
-				break;
-			}
-
 			default:
 				std::cout << "Received a message with an unknown ID: " << packet->data[0] << std::endl;
 				break;
@@ -771,7 +722,7 @@ void Client::HandleNetworkMessages(bool loop)
 
 int Client::ParseIDNumber(const char* str)
 {
-	std::string result = "";
+	std::string result;
 	for (int i = 0; i < strlen(str); i++)
 	{
 		if (str[i] != '(')
@@ -787,51 +738,6 @@ int Client::ParseIDNumber(const char* str)
 			}
 		}
 	}
-	if (result == "")
-	{
-		return -1;
-	}
-
 	int idNum = std::stoi(result);
 	return idNum;
-}
-
-std::vector<std::string> Client::SplitIntoMessages(std::string str)
-{	
-	std::vector<std::string> messages;
-	//split into newlines
-	//if does not start with (xxxx):, then concatenate with previous message
-	
-	std::vector<std::string> splitIntoNewlines;
-	
-	std::string current = str;
-	int newLinePos = current.find('\n');
-	while (newLinePos != std::string::npos)
-	{
-		std::string message = current.substr(0, newLinePos);
-		splitIntoNewlines.push_back(message);
-		current = current.substr(newLinePos + 1, current.length());
-		newLinePos = current.find('\n');
-	}
-	messages.resize(splitIntoNewlines.size());
-	splitIntoNewlines.push_back(current);
-	int messagesIndex = -1;
-	
-	for (std::string s : splitIntoNewlines)
-	{
-		int firstOpeningBracket = s.find('(');
-		int firstClosingBracket = s.find("):");
-		if (firstOpeningBracket != std::string::npos && firstClosingBracket != std::string::npos)
-		{
-			messagesIndex++;
-			messages[messagesIndex] = s;
-		}
-	
-		else
-		{
-			messages[messagesIndex] += "\n" + s;
-		}
-	}
-	
-	return messages;
 }
